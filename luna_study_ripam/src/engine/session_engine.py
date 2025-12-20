@@ -2,8 +2,10 @@ import json
 import os
 import random
 from typing import Optional, List
+import uuid
 
-from src.domain.models import SessionState, Question, Outcome, TutorName
+# Assicurati che models.py sia aggiornato con HistoryItem!
+from src.domain.models import SessionState, Question, Outcome, TutorName, HistoryItem
 from src.ai.gemini_client import GeminiClient
 from src.ai.prompt_builder import build_question_prompt, PromptBuildConfig
 from src.visuals.prompt_compiler import compile_sd_prompt
@@ -23,14 +25,10 @@ class SessionEngine:
         self.gemini = gemini
         self.sd_client = sd_client
         self.enable_sd = enable_sd
-
-        # Gestore dello stage (livelli)
         self.stage_manager = StageManager(step=10, min_stage=1, max_stage=5)
-
         self.last_image_path: Optional[str] = None
 
     def start_next_question(self, state: SessionState) -> Question:
-        # 1. Seleziona Tutor, Materia
         tutor = "Maria"
         subjects = [
             "Diritto amministrativo", "Logica", "Informatica (TIC)",
@@ -39,11 +37,12 @@ class SessionEngine:
         ]
         subject = random.choice(subjects)
 
-        # 2. Recupera stato attuale
         current_stage = state.stage.get(tutor, 1)
-        last_outcome = state.history[-1].outcome if state.history else "neutro"
 
-        # 3. Costruisci Prompt
+        last_outcome = "neutro"
+        if state.history:
+            last_outcome = state.history[-1].outcome
+
         cfg = PromptBuildConfig(seed_per_prompt=3, strict_json_only=True)
         prompt_text = build_question_prompt(
             project_root=self.project_root,
@@ -54,19 +53,24 @@ class SessionEngine:
             cfg=cfg
         )
 
-        # 4. Chiama LLM
         response_json = self.gemini.generate_content(prompt_text)
 
-        # 5. Parsing
+        # --- FIX: PULIZIA JSON ---
+        # Rimuove markdown backticks se presenti
+        cleaned_json = response_json
+        if "```" in cleaned_json:
+            cleaned_json = cleaned_json.replace("```json", "").replace("```", "").strip()
+        # -------------------------
+
         try:
-            data = json.loads(response_json)
-        except json.JSONDecodeError:
-            # Fallback banale in caso di errore JSON
+            data = json.loads(cleaned_json)
+        except json.JSONDecodeError as e:
+            print(f"Errore JSON grezzo: {response_json}")  # Log per debug
             data = {
-                "domanda": "Errore generazione JSON.",
-                "opzioni": {"A": "Err", "B": "Err", "C": "Err", "D": "Err"},
+                "domanda": "Errore lettura dati dall'IA. Riprova.",
+                "opzioni": {"A": "...", "B": "...", "C": "...", "D": "..."},
                 "corretta": "A",
-                "spiegazione": "Riprova.",
+                "spiegazione": f"Dettaglio errore: {e}",
                 "tutor": tutor,
                 "materia": subject
             }
@@ -79,54 +83,58 @@ class SessionEngine:
             tutor=data.get("tutor", tutor),
             materia=data.get("materia", subject),
             tipo=data.get("tipo", "standard"),
-            tags=data.get("tags", []),  # Tags visivi
-            visual=data.get("visual", "")  # Descrizione scena
+            tags=data.get("tags", []),
+            visual=data.get("visual", "")
         )
-        # Salva spiegazione breve per la GUI (opzionale se non c'è nel JSON)
         q.spiegazione_breve = data.get("spiegazione", "")
 
         return q
 
     def apply_answer(self, state: SessionState, question: Question, user_choice: str):
-        # 1. Verifica correttezza
         is_correct = (user_choice.upper() == question.corretta.upper())
         outcome = "corretta" if is_correct else "errata"
 
-        # 2. Aggiorna Stage/Punti
+        # Aggiorna History
+        new_item = HistoryItem(tutor=question.tutor, outcome=outcome)
+        state.history.append(new_item)
+
+        # Aggiorna Stage
         update = self.stage_manager.apply_outcome(state, question.tutor, outcome)
 
-        # 3. Generazione Immagine (se abilitata)
+        # Genera Immagine
         if self.enable_sd:
-            sd_prompt = compile_sd_prompt(
-                project_root=self.project_root,
-                tutor=question.tutor,
-                stage=update.new_stage,  # Usa lo stage (outfit) mantenuto
-                is_punish=update.is_punish,  # Aggiungi espressione severa se errata
-                question=question
-            )
+            try:
+                sd_prompt = compile_sd_prompt(
+                    project_root=self.project_root,
+                    tutor=question.tutor,
+                    stage=update.new_stage,
+                    is_punish=update.is_punish,
+                    question=question
+                )
 
-            # Nome file univoco
-            import uuid
-            filename = f"image_{uuid.uuid4().hex[:6]}.png"
-            out_path = os.path.join(self.project_root, "output_images", filename)
-            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                filename = f"image_{uuid.uuid4().hex[:6]}.png"
+                out_path = os.path.join(self.project_root, "output_images", filename)
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-            self.sd_client.generate_image(
-                prompt=sd_prompt.prompt,
-                negative_prompt=sd_prompt.negative_prompt,
-                output_path=out_path
-            )
-            self.last_image_path = out_path
+                self.sd_client.generate_image(
+                    prompt=sd_prompt.prompt,
+                    negative_prompt=sd_prompt.negative_prompt,
+                    output_path=out_path
+                )
+                self.last_image_path = out_path
+            except Exception as e:
+                print(f"Errore generazione immagine: {e}")
+                self.last_image_path = None
 
         return update
 
-    # --- NUOVI METODI PER SALVATAGGIO/CARICAMENTO ---
-
     def save_session_to_file(self, state: SessionState, filepath: str):
-        """Salva lo stato corrente su file JSON."""
+        # Convertiamo HistoryItem in dict per il JSON
+        history_data = [{"tutor": h.tutor, "outcome": h.outcome} for h in state.history]
         data = {
-            "progress": state.progress,  # Dizionario {tutor: punti}
-            "stage": state.stage  # Dizionario {tutor: livello}
+            "progress": state.progress,
+            "stage": state.stage,
+            "history": history_data
         }
         try:
             with open(filepath, "w", encoding="utf-8") as f:
@@ -137,18 +145,18 @@ class SessionEngine:
             return False
 
     def load_session_from_file(self, filepath: str) -> Optional[SessionState]:
-        """Carica lo stato da file JSON e restituisce un nuovo oggetto SessionState."""
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             new_state = SessionState()
-            # Ripristina i dizionari. Assicuriamoci che le chiavi siano stringhe (JSON standard)
-            if "progress" in data:
-                new_state.progress = data["progress"]
-            if "stage" in data:
-                new_state.stage = data["stage"]
-
+            if "progress" in data: new_state.progress = data["progress"]
+            if "stage" in data: new_state.stage = data["stage"]
+            if "history" in data:
+                new_state.history = [
+                    HistoryItem(tutor=x["tutor"], outcome=x["outcome"])
+                    for x in data["history"]
+                ]
             return new_state
         except Exception as e:
             print(f"Errore caricamento: {e}")
