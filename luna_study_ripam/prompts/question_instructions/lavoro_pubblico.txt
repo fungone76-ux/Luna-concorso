@@ -1,0 +1,4 @@
+SUBJECT: Lavoro alle dipendenze PA
+Focus: diritti, doveri, codice comportamento.
+Style: casi lavorativi.
+Avoid: diritto sindacale avanzato.

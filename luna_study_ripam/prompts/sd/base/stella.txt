@@ -1,0 +1,6 @@
+﻿    score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up, masterpiece, NSFW, photorealistic,
+    photo winning award, 1girl, alice_milf_catchers, massive breasts, cleavage, blonde hair, beautiful blue eyes,
+     detailed eyes, shapely legs, hourglass figure, skinny body, narrow waist, wide hips, large breasts,
+    expressive_h, lean body, tied hair,
+    <lora:alice_milf_catchers_lora:0.7> <lora:Expressive_H:0.2>
+

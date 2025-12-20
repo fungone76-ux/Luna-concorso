@@ -1,0 +1,6 @@
+﻿# Stili tipici per domande giuridiche (lista da espandere)
+- definizione
+- principio generale
+- eccezione
+- caso pratico
+- errore tipico

@@ -1,0 +1,4 @@
+SUBJECT: Diritto UE
+Focus: istituzioni UE, fonti, competenze.
+Style: domande schematiche e istituzionali.
+Avoid: politica estera o macroeconomia.

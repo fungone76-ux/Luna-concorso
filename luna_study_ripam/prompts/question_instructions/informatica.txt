@@ -1,0 +1,4 @@
+SUBJECT: Informatica di base
+Focus: sistemi, sicurezza, uso strumenti digitali PA.
+Style: conoscenze pratiche.
+Avoid: programmazione.

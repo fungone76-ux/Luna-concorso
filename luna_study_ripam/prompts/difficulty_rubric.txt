@@ -1,0 +1,9 @@
+﻿================================================================================
+DIFFICOLTÀ SCALARE (1–5)
+================================================================================
+1 = definizioni dirette, concetti base
+2 = distinzione tra concetti simili, parole-trappola
+3 = applicazione pratica semplice, piccoli casi
+4 = eccezioni / casi limite, distrattori forti
+5 = casi più complessi con ragionamento, distrattori “quasi giusti”
+================================================================================

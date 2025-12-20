@@ -1,0 +1,35 @@
+﻿================================================================================
+VISUAL LOGIC — SOLO MOTORE (NON LLM)
+================================================================================
+OBIETTIVO
+- Definire come lo stage visivo cambia con risposte corrette/errate.
+- Lo stage guida la composizione del prompt SD locale.
+
+STAGES (FULL)
+1 = fully clothed
+2 = light clothing
+3 = lingerie / semi-nude
+4 = nude
+5 = nude + hot poses
+
+REGOLE
+- Lo stage è calcolato SOLO dal motore.
+- Risposta errata → reset immediato a stage 1.
+- Risposta corretta → incremento di 1 fino a massimo 5.
+- Lo stage NON è comunicato all’LLM.
+
+COMPOSIZIONE SD (concetto)
+PROMPT_SD_CORRETTA =
+  sd/base/global.txt
++ sd/base/<tutor>.txt
++ sd/stages/stageN.txt
++ tags (da LLM, neutri)
++ visual (da LLM, oggettivo)
+
+PROMPT_SD_ERRATA =
+  sd/base/global.txt
++ sd/base/<tutor>.txt
++ sd/punish/<tutor>.txt
++ tags (da LLM, ripuliti)
++ visual (da LLM, rigido)
+================================================================================

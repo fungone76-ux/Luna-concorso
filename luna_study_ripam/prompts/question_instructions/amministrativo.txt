@@ -1,0 +1,4 @@
+SUBJECT: Diritto Amministrativo
+Focus: procedimento amministrativo, L.241/90, atti, termini, silenzio PA, accesso.
+Style: RIPAM/Formez, domande pratiche, distrattori plausibili.
+Avoid: teoria accademica, giustizia amministrativa avanzata.

@@ -1,0 +1,6 @@
+﻿# Archetipi logica (lista da espandere)
+- sillogismi
+- condizioni necessarie / sufficienti
+- negazioni e contrapposizioni
+- deduzioni a catena
+- analogie e relazioni

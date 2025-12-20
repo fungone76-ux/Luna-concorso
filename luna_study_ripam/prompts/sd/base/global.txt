@@ -1,0 +1,17 @@
+﻿(masterpiece, best quality, highres:1.2),
+(ultra-detailed, sharp focus:1.1),
+cinematic lighting, soft shadows, volumetric light,
+clean background, realistic skin texture, natural proportions,
+35mm photography, depth of field, bokeh,
+color grading, film still
+
+NEGATIVE: score_5, score_4, low quality, anime, monochrome, deformed, bad lips, bad mouth,
+    pants, fat woman, bald girl, bad anatomy, worst face, bad eyes, bad nose, duplicate,
+    twins, mixed style, teeth, worst quality, undetailed, CGI, render, anti airbrushing,
+    undetailed eyes, sketch, unclear, watermark, 3d, two heads, doll, extra nipples,
+    blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, mutated,
+    bad hands, too many fingers, fused fingers, bad arm, distorted arms, disembodied leg,
+    poorly feet, zipper, latex, spandex, plastic, modern clothing,
+    denim, nylon,
+
+

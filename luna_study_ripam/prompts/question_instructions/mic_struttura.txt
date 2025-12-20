@@ -1,0 +1,4 @@
+SUBJECT: Struttura MIC
+Focus: organizzazione ministeriale, direzioni.
+Style: domande istituzionali.
+Avoid: dettagli storici.

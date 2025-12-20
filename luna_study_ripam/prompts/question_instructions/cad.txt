@@ -1,0 +1,4 @@
+SUBJECT: Codice dell’Amministrazione Digitale
+Focus: documenti informatici, firme, PEC, SPID, interoperabilità.
+Style: casi pratici PA.
+Avoid: dettagli tecnici informatici avanzati.

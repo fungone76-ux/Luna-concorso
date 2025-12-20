@@ -1,0 +1,10 @@
+GENERAL RULES FOR ALL QUESTIONS
+
+Generate questions consistent with Italian public administration exams (RIPAM/Formez).
+
+- Formal, concise, institutional Italian.
+- One and only one correct answer.
+- Plausible distractors based on common exam traps.
+- No academic theory, no commentary.
+- Prefer practical application over pure definition.
+- Difficulty must be coherent with assistant-level exams.

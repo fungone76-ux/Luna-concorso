@@ -1,0 +1,4 @@
+SUBJECT: Diritto Penale PA
+Focus: reati contro PA.
+Style: definizioni operative.
+Avoid: parte generale complessa.

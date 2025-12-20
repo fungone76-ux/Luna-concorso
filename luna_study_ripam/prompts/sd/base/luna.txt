@@ -1,0 +1,7 @@
+﻿    score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up,
+    masterpiece, NSFW, photorealistic, photo winning award, stsdebbie, dynamic pose,
+    (thick thighs:0.45), big breasts, full body, 1girl, mature woman, brown hair,
+    long hair, shiny body, shiny skin, head tilt, massive breasts, cleavage,
+    normal hips, bottom tonic, athletic body,
+    <lora:stsDebbie-10e:0.7> <lora:Expressive_H-000001:0.20>
+

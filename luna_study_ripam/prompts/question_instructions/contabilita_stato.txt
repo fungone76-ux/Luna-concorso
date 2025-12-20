@@ -1,0 +1,4 @@
+SUBJECT: Contabilità di Stato
+Focus: bilancio, entrate/uscite, responsabilità contabile.
+Style: definizioni operative e casi semplici.
+Avoid: contabilità aziendale.

@@ -1,0 +1,4 @@
+﻿    score_9, score_8_up, score_7_up, stsSmith, ultra-detailed, realistic lighting, 1girl, mature female,
+    (middle eastern woman:1.5), old woman, veiny breasts, black hair, short hair, brown eyes,
+    <lora:stsSmith-10e:0.65> <lora:Expressive_H:0.2>
+

@@ -1,0 +1,4 @@
+SUBJECT: Logica
+Focus: deduzioni, analogie, serie.
+Style: standard RIPAM.
+Avoid: matematica complessa.

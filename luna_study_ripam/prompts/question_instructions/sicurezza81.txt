@@ -1,0 +1,4 @@
+SUBJECT: Sicurezza sul lavoro D.Lgs 81/08
+Focus: obblighi, ruoli, responsabilità.
+Style: applicazione pratica.
+Avoid: dettagli tecnici specialistici.
