@@ -93,13 +93,13 @@ def subject_to_seed_filename(subject: str) -> str:
 
 
 def build_question_prompt(
-    project_root: str,
-    subject: str,
-    tutor: str,
-    stage: int,
-    outcome_hint: str,
-    cfg: PromptBuildConfig,
-    rng: Optional[random.Random] = None,
+        project_root: str,
+        subject: str,
+        tutor: str,
+        stage: int,
+        outcome_hint: str,
+        cfg: PromptBuildConfig,
+        rng: Optional[random.Random] = None,
 ) -> str:
     """
     Crea il prompt per generare UNA domanda (stile RIPAM) + campi visuali.
@@ -119,7 +119,10 @@ def build_question_prompt(
     """
     rng = rng or random.Random()
 
-    # --- file path ---
+    # --- PERCORSI FILE ---
+    # 1. Aggiunto il System Prompt (regole base + divieti tag)
+    system_prompt_path = os.path.join(project_root, "prompts", "system_prompt.txt")
+
     general_rules_path = os.path.join(project_root, "prompts", "question_instructions", "_general_rules.txt")
     instr_path = os.path.join(
         project_root,
@@ -136,7 +139,8 @@ def build_question_prompt(
         subject_to_seed_filename(subject),
     )
 
-    # --- read content ---
+    # --- LETTURA CONTENUTI ---
+    system_rules = _read_text(system_prompt_path)
     general_rules = _read_text(general_rules_path)
     subject_instructions = _read_text(instr_path)
     schema_text = _read_text(schema_path)
@@ -160,8 +164,11 @@ def build_question_prompt(
             "- Nessuna spiegazione fuori dal JSON.\n"
         )
 
-    # --- build prompt ---
+    # --- COSTRUZIONE PROMPT ---
+    # Inseriamo 'system_rules' in testa, così l'IA sa cosa NON deve mettere nei tag.
     prompt = f"""
+{system_rules}
+
 Sei un generatore di domande per concorso pubblico RIPAM.
 Genera 1 domanda nuova (non vista prima) per la prova del MIC (Assistente vigilanza/accoglienza).
 
@@ -187,8 +194,8 @@ OUTPUT OBBLIGATORIO:
   tutor, materia, tipo, domanda, opzioni(A-D), corretta (se standard), spiegazione
 - Se tipo="situazionale": includi efficacia per A-D (efficace/neutra/inefficace)
 - Aggiungi anche:
-  tags_en: lista breve di keyword utili per SD (pose/outfit/mood coerenti con stage+esito)
-  visual_en: descrizione concreta e “SD-friendly” (no emozioni vaghe, no narrativa)
+  tags: lista breve di keyword VISIVE per SD (pose/outfit/mood). NO parole astratte o legali.
+  visual: descrizione concreta e “SD-friendly” (no emozioni vaghe, no narrativa)
 
 SCHEMA JSON:
 {schema_text}

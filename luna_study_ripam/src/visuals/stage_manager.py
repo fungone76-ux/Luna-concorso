@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 from src.domain.models import SessionState, TutorName, Outcome
 
@@ -20,11 +21,12 @@ class StageManager:
     """
     Gestisce progress e stage per ciascuna tutor.
 
-    Modalità implementata (scelta "2"):
-    - progress = conteggio risposte CORRETTE per tutor
-    - stage = 1 + (progress // step), clamp 1..5
-    - punish (errata/omessa): stage = max(1, stage-1) (de-escalation di 1)
-    - progress NON viene azzerato in punish (rimane com'è)
+    Nuova Logica (Punti solidi):
+    - Progress: +1 se corretta, -1 se errata.
+    - Stage: calcolato matematicamente in base a fasce di 10 punti.
+      0-10 -> Stage 1
+      11-20 -> Stage 2
+      etc.
     """
 
     def __init__(self, step: int = 10, min_stage: int = 1, max_stage: int = 5):
@@ -41,16 +43,16 @@ class StageManager:
         is_punish = outcome != "corretta"
 
         if outcome == "corretta":
-            # aumenta progress
+            # Aumenta progress
             new_progress = old_progress + 1
-            # ricalcola stage da progress
-            new_stage = self._stage_from_progress(new_progress)
         else:
-            # punish: de-escalation di 1 stage
-            new_progress = old_progress
-            new_stage = max(self.min_stage, old_stage - 1)
+            # Decrementa progress (ma non sotto 0)
+            new_progress = max(0, old_progress - 1)
 
-        # salva nello stato
+        # Calcola lo stage basandosi SOLO sul nuovo punteggio progress
+        new_stage = self._stage_from_progress(new_progress)
+
+        # Salva nello stato
         state.progress[tutor] = new_progress
         state.stage[tutor] = new_stage
 
@@ -64,6 +66,22 @@ class StageManager:
         )
 
     def _stage_from_progress(self, progress: int) -> int:
-        # stage = 1 + progress//step
-        raw = self.min_stage + (max(0, int(progress)) // self.step)
-        return max(self.min_stage, min(self.max_stage, raw))
+        """
+        Calcola lo stage in base ai range definiti:
+        0-10  -> Stage 1
+        11-20 -> Stage 2
+        21-30 -> Stage 3
+        ...
+        """
+        # Se progress è 0, siamo a stage 1.
+        if progress == 0:
+            return self.min_stage
+
+        # Formula: (progress - 1) // step + 1
+        # Esempio con step=10:
+        # Punti 1..10  -> (0..9)//10 = 0 -> +1 = Stage 1
+        # Punti 11..20 -> (10..19)//10 = 1 -> +1 = Stage 2
+        raw_stage = ((progress - 1) // self.step) + 1
+
+        # Clamp tra min e max (es. 1 e 5)
+        return max(self.min_stage, min(self.max_stage, raw_stage))
