@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple, Optional
+import sys
 
 from src.domain.models import TutorName, Question
 
@@ -22,58 +23,84 @@ def compile_sd_prompt(
         question: Optional[Question] = None,
 ) -> SDPrompt:
     """
-    Compone il prompt per Stable Diffusion.
-
-    LOGICA AGGIORNATA:
-    - Global + Tutor Base: SEMPRE inclusi.
-    - Stage: SEMPRE incluso (così l'outfit rimane quello raggiunto, es. Stage 2).
-    - Punish: Se is_punish=True, aggiunge in coda i tag di "punizione" (espressione severa, etc)
-      invece di sostituire lo stage.
+    Versione DEBUG con stampe in console.
     """
+    print(f"\n--- [DEBUG] Compilazione Prompt ---")
+    print(f"ROOT: {project_root}")
+    print(f"Tutor: {tutor} | Stage: {stage} | Punish: {is_punish}")
+
     root = Path(project_root)
     sd_dir = root / "prompts" / "sd"
 
     # 1. Carica Global e Tutor Base
-    global_txt = _read_text(sd_dir / "base" / "global.txt")
-    tutor_txt = _read_text(sd_dir / "base" / f"{tutor.lower()}.txt")
+    global_path = sd_dir / "base" / "global.txt"
+    tutor_path = sd_dir / "base" / f"{tutor.lower()}.txt"
 
-    # 2. Carica SEMPRE lo Stage corrente (così mantieni l'outfit)
+    global_txt = _read_text(global_path)
+    tutor_txt = _read_text(tutor_path)
+
+    print(f"Global loaded ({len(global_txt)} chars). Tutor loaded ({len(tutor_txt)} chars).")
+
+    # 2. Carica Stage
     n = _clamp_int(stage, 1, 5)
-    stage_txt = _read_text(sd_dir / "stages" / f"stage{n}.txt")
+    stage_path = sd_dir / "stages" / f"stage{n}.txt"
+    stage_txt = _read_text(stage_path)
 
-    # 3. Se è punizione, carica i dettagli "Mood Punish"
-    # Nota: usiamo il file 'punish/<tutor>.txt' come "sovrapposizione" di mood
+    if not stage_txt:
+        print(f"!!! ATTENZIONE: Stage file vuoto o non trovato: {stage_path}")
+    else:
+        print(f"Stage loaded from {stage_path.name} ({len(stage_txt)} chars).")
+
+    # 3. Punish
     punish_txt = ""
     if is_punish:
-        punish_txt = _read_text(sd_dir / "punish" / f"{tutor.lower()}.txt")
+        punish_path = sd_dir / "punish" / f"{tutor.lower()}.txt"
+        punish_txt = _read_text(punish_path)
+        print(f"Punish mode ON. Loaded {punish_path.name}")
 
     pos_global, neg_global = _split_negative(global_txt)
 
     chunks: List[str] = []
     chunks.extend(_to_chunks(pos_global))
     chunks.extend(_to_chunks(tutor_txt))
-    chunks.extend(_to_chunks(stage_txt))  # L'outfit base
+    chunks.extend(_to_chunks(stage_txt))
 
     if is_punish:
-        # Aggiungiamo la punizione DOPO lo stage per sovrascrivere l'espressione
         chunks.extend(_to_chunks(punish_txt))
 
-    # aggiunta LLM (opzionale): tags + visual
+    # 4. Tags + Visual
     if question is not None:
-        # tags_raw = getattr(question, "tags", []) or []
+        print("Question object: PRESENTE")
+        tags_raw = getattr(question, "tags", []) or []
         visual_raw = getattr(question, "visual", "") or ""
 
-        # tags = [t.strip() for t in tags_raw if isinstance(t, str) and t.strip()]
+        print(f"Tags raw: {tags_raw}")
+        print(f"Visual raw: {visual_raw}")
+
+        tags = [t.strip() for t in tags_raw if isinstance(t, str) and t.strip()]
         visual = visual_raw.strip()
 
-        # if tags:
-        #     chunks.append(", ".join(tags))
+        if tags:
+            joined_tags = ", ".join(tags)
+            chunks.append(joined_tags)
+            print(f"Tags aggiunti: {joined_tags[:50]}...")
+        else:
+            print("!!! ATTENZIONE: Nessun tag valido trovato.")
 
         if visual:
-            chunks.append(visual)
+            if not is_punish:
+                chunks.append(visual)
+                print("Visual aggiunto.")
+            else:
+                print("Visual ignorato per punizione.")
+    else:
+        print("!!! ATTENZIONE: Question object è NONE")
 
     prompt = _join(chunks)
     negative_prompt = _join(_to_chunks(neg_global))
+
+    print(f"Prompt finale lungh: {len(prompt)}")
+    print("-----------------------------------\n")
 
     return SDPrompt(prompt=prompt, negative_prompt=negative_prompt)
 
@@ -84,9 +111,14 @@ def compile_sd_prompt(
 
 def _read_text(path: Path) -> str:
     if not path.exists():
-        # Se manca un file, ritorniamo stringa vuota invece di crashare (più robusto per test)
+        print(f"[DEBUG] File NON trovato: {path}")
         return ""
-    return path.read_text(encoding="utf-8").strip()
+        # Usa utf-8-sig per gestire il BOM
+    try:
+        return path.read_text(encoding="utf-8-sig").strip()
+    except Exception as e:
+        print(f"[DEBUG] Errore lettura {path}: {e}")
+        return ""
 
 
 def _split_negative(text: str) -> Tuple[str, str]:
