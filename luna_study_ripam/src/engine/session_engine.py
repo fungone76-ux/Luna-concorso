@@ -56,7 +56,6 @@ class SessionEngine:
         response_json = self.gemini.generate_content(prompt_text)
 
         # --- FIX: PULIZIA JSON ---
-        # Rimuove markdown backticks se presenti
         cleaned_json = response_json
         if "```" in cleaned_json:
             cleaned_json = cleaned_json.replace("```json", "").replace("```", "").strip()
@@ -65,7 +64,7 @@ class SessionEngine:
         try:
             data = json.loads(cleaned_json)
         except json.JSONDecodeError as e:
-            print(f"Errore JSON grezzo: {response_json}")  # Log per debug
+            print(f"Errore JSON grezzo: {response_json}")
             data = {
                 "domanda": "Errore lettura dati dall'IA. Riprova.",
                 "opzioni": {"A": "...", "B": "...", "C": "...", "D": "..."},
@@ -75,20 +74,72 @@ class SessionEngine:
                 "materia": subject
             }
 
+        # --- FIX SPIEGAZIONE ---
+        # Cerchiamo prima 'spiegazione_breve' (nuovo schema) poi 'spiegazione' (vecchio)
+        raw_spiegazione = data.get("spiegazione_breve") or data.get("spiegazione") or "Nessuna spiegazione disponibile."
+
         q = Question(
             domanda=data.get("domanda", ""),
             opzioni=data.get("opzioni", {}),
             corretta=data.get("corretta", "A"),
-            spiegazione=data.get("spiegazione", ""),
+            spiegazione=raw_spiegazione,
             tutor=data.get("tutor", tutor),
             materia=data.get("materia", subject),
             tipo=data.get("tipo", "standard"),
             tags=data.get("tags", []),
             visual=data.get("visual", "")
         )
-        q.spiegazione_breve = data.get("spiegazione", "")
+        q.spiegazione_breve = raw_spiegazione # Assicuriamo che il campo sia popolato
 
         return q
+
+    def get_tutor_response(self, question: Question, user_text: str, has_answered: bool) -> str:
+        """
+        Genera una risposta del Tutor in chat.
+        Se has_answered è True, il tutor può spiegare la soluzione.
+        Se è False, il tutor deve essere vago e non dare la soluzione.
+        """
+        # Carica profilo tutor
+        tutor_file = f"{question.tutor.lower()}.txt"
+        try:
+            path = os.path.join(self.project_root, "prompts", "tutor_profiles", tutor_file)
+            with open(path, "r", encoding="utf-8") as f:
+                tutor_profile = f.read().strip()
+        except:
+            tutor_profile = f"Sei {question.tutor}."
+
+        # Istruzione condizionale sugli spoiler
+        if has_answered:
+            spoiler_instruction = (
+                f"L'utente HA GIÀ RISPOSTO. La risposta corretta è {question.corretta}.\n"
+                f"Spiegazione tecnica: {question.spiegazione}.\n"
+                "Se l'utente chiede spiegazioni, forniscile in modo chiaro e didattico, ma mantenendo il tuo tono."
+            )
+        else:
+            spoiler_instruction = (
+                "L'utente NON ha ancora risposto.\n"
+                "NON RIVELARE la risposta corretta (A, B, C o D).\n"
+                "Se chiedono aiuto, dai un piccolo indizio o rimproverali (in base al tuo carattere), ma non dare la soluzione."
+            )
+
+        prompt = f"""
+{tutor_profile}
+
+CONTESTO ATTUALE:
+Materia: "{question.materia}"
+Domanda: "{question.domanda}"
+Opzioni: {question.opzioni}
+
+STATO:
+{spoiler_instruction}
+
+INTERAZIONE:
+Il candidato dice: "{user_text}"
+
+ISTRUZIONI:
+Rispondi al candidato (max 2 frasi). Usa il tuo tono specifico.
+"""
+        return self.gemini.generate_content(prompt)
 
     def apply_answer(self, state: SessionState, question: Question, user_choice: str):
         is_correct = (user_choice.upper() == question.corretta.upper())
@@ -129,7 +180,6 @@ class SessionEngine:
         return update
 
     def save_session_to_file(self, state: SessionState, filepath: str):
-        # Convertiamo HistoryItem in dict per il JSON
         history_data = [{"tutor": h.tutor, "outcome": h.outcome} for h in state.history]
         data = {
             "progress": state.progress,

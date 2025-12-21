@@ -3,7 +3,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 import tkinter as tk
-from tkinter import messagebox, filedialog  # Aggiunto filedialog
+from tkinter import messagebox, filedialog
 import sys
 import textwrap
 
@@ -112,16 +112,16 @@ class LunaGuiApp(ctk.CTk):
         self.engine = SessionEngine(self.project_root, gemini, sd, True)
 
     def _setup_ui(self):
-        # 1. HEADER (Modificato con Bottoni Salva/Carica)
+        # 1. HEADER
         self.header_frame = ctk.CTkFrame(self, height=50, corner_radius=0, fg_color="#202c33")
         self.header_frame.grid(row=0, column=0, sticky="ew")
 
-        # Info Tutor (Sinistra)
+        # Info Tutor
         self.lbl_tutor_info = ctk.CTkLabel(self.header_frame, text="Luna Bot", font=("Helvetica", 16, "bold"),
                                            text_color="white")
         self.lbl_tutor_info.pack(side="left", padx=15, pady=10)
 
-        # Bottoni Salva/Carica (Destra, prima delle stats)
+        # Bottoni Salva/Carica
         self.btn_load = ctk.CTkButton(self.header_frame, text="📂", width=30, height=30, fg_color="#37404a",
                                       command=self.load_game)
         self.btn_load.pack(side="right", padx=(5, 15), pady=10)
@@ -130,7 +130,7 @@ class LunaGuiApp(ctk.CTk):
                                       command=self.save_game)
         self.btn_save.pack(side="right", padx=5, pady=10)
 
-        # Stats (Centro-Destra)
+        # Stats
         self.lbl_stats = ctk.CTkLabel(self.header_frame, text="S: 1 | P: 0", font=("Helvetica", 12),
                                       text_color="#aebac1")
         self.lbl_stats.pack(side="right", padx=10, pady=10)
@@ -141,8 +141,15 @@ class LunaGuiApp(ctk.CTk):
         self.image_label = ctk.CTkLabel(self.image_frame, text="", cursor="hand2")
         self.image_label.place(relx=0.5, rely=0.5, anchor="center")
         self.image_label.bind("<Button-1>", self.open_image_viewer)
-        self.loading_label = ctk.CTkLabel(self.image_frame, text="", text_color="gray")
-        self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # UI Caricamento
+        self.loading_label = ctk.CTkLabel(self.image_frame, text="", text_color="#00a884",
+                                          font=("Helvetica", 14, "bold"))
+        self.loading_label.place(relx=0.5, rely=0.45, anchor="center")
+
+        self.progress_bar = ctk.CTkProgressBar(self.image_frame, width=200, mode="indeterminate",
+                                               progress_color="#00a884")
+        self.progress_bar.set(0)
 
         # 3. CHAT BUBBLE
         self.chat_frame = ctk.CTkFrame(self, fg_color="#0b141a", corner_radius=0)
@@ -180,6 +187,44 @@ class LunaGuiApp(ctk.CTk):
                                       fg_color="#00a884", command=self.send_message)
         self.btn_send.grid(row=0, column=1, padx=(0, 15), pady=10)
 
+    # --- CHAT & LOGICA MESSAGGI ---
+    def send_message(self):
+        if not self.current_question: return
+        text = self.entry_msg.get().strip()
+        if not text: return
+
+        self.entry_msg.delete(0, "end")
+
+        upper = text.upper()
+        # CASO 1: Risposta A/B/C/D
+        if self.can_answer and upper in ["A", "B", "C", "D"]:
+            self.submit_answer(upper)
+
+        # CASO 2: Messaggio di Chat
+        else:
+            # Mostra messaggio utente
+            cur = self.question_text.cget("text")
+            if len(cur) > 800: cur = "..." + cur[-800:]  # Taglia se troppo lungo
+            self.question_text.configure(text=f"{cur}\n\nTu: {text}")
+
+            # Avvia Thread Chat
+            self.loading_label.configure(text=f"{self.current_question.tutor} sta scrivendo...")
+            threading.Thread(target=self._chat_thread, args=(text,), daemon=True).start()
+
+    def _chat_thread(self, user_text):
+        if not self.current_question: return
+        # Se can_answer è False, significa che siamo in fase di risultato -> possiamo spoilerare/spiegare
+        has_answered = not self.can_answer
+        response = self.engine.get_tutor_response(self.current_question, user_text, has_answered)
+        self.after(0, lambda: self._update_chat_ui(response))
+
+    def _update_chat_ui(self, response_text):
+        self.loading_label.configure(text="")
+        cur = self.question_text.cget("text")
+        tutor = self.current_question.tutor
+        self.question_text.configure(text=f"{cur}\n\n{tutor}: {response_text}")
+        speak(response_text)
+
     # --- SAVE / LOAD SYSTEM ---
     def save_game(self):
         file_path = filedialog.asksaveasfilename(
@@ -199,29 +244,29 @@ class LunaGuiApp(ctk.CTk):
             title="Carica Partita"
         )
         if file_path:
-            # Ferma qualsiasi attività corrente
             stop()
             new_state = self.engine.load_session_from_file(file_path)
             if new_state:
                 self.session_state = new_state
-                # Aggiorna UI con i nuovi dati
-                tutor = "Maria"  # Default o recuperato se lo salvassi
+                tutor = "Maria"
                 prog = self.session_state.progress.get(tutor, 0)
                 stage = self.session_state.stage.get(tutor, 1)
                 self.lbl_stats.configure(text=f"S: {stage} | P: {prog}")
-
                 messagebox.showinfo("Caricamento", f"Partita caricata!\nStage: {stage} - Punti: {prog}")
-                # Riavvia il turno per applicare lo stato alla domanda
                 self.start_turn()
             else:
                 messagebox.showerror("Errore", "File corrotto o non valido.")
 
-    # --- LOGICA DI GIOCO ---
+    # --- LOGICA GIOCO ---
     def start_turn(self):
         stop()
         self.set_ui_state("disabled")
         self.btn_next.pack_forget()
-        self.loading_label.configure(text="Generazione domanda...")
+
+        self.loading_label.configure(text="Generazione domanda con Gemini...")
+        self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
+        self.progress_bar.start()
+
         threading.Thread(target=self._generate_question_thread, daemon=True).start()
 
     def _generate_question_thread(self):
@@ -232,6 +277,10 @@ class LunaGuiApp(ctk.CTk):
             print(f"Errore: {e}")
 
     def _display_question(self, q: Question):
+        self.progress_bar.stop()
+        self.progress_bar.place_forget()
+        self.loading_label.configure(text="")
+
         self.current_question = q
         self.can_answer = True
         self.question_text.configure(text=q.domanda)
@@ -248,7 +297,6 @@ class LunaGuiApp(ctk.CTk):
         self.lbl_tutor_info.configure(text=f"{tutor} (Online)")
         self.lbl_stats.configure(text=f"S: {stage} | P: {prog}")
 
-        self.loading_label.configure(text="")
         self.entry_msg.configure(state="normal")
         self.btn_send.configure(state="normal")
         self.entry_msg.delete(0, "end")
@@ -259,25 +307,17 @@ class LunaGuiApp(ctk.CTk):
             if q.opzioni.get(l): text_to_read += f"Risposta {l}. {q.opzioni[l]}. "
         speak(text_to_read)
 
-    def send_message(self):
-        if not self.current_question: return
-        text = self.entry_msg.get().strip()
-        if not text: return
-        upper = text.upper()
-        if self.can_answer and upper in ["A", "B", "C", "D"]:
-            self.submit_answer(upper)
-        else:
-            cur = self.question_text.cget("text")
-            self.question_text.configure(text=f"{cur}\n\nTu: {text}")
-        self.entry_msg.delete(0, "end")
-
     def submit_answer(self, choice: str):
         if not self.can_answer: return
         stop()
         self.can_answer = False
         for btn in self.btn_options.values(): btn.configure(state="disabled")
         self.btn_options[choice].configure(fg_color="#005c4b")
-        self.loading_label.configure(text="Generazione immagine e correzione...")
+
+        self.loading_label.configure(text="Analisi risposta...")
+        self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
+        self.progress_bar.start()
+
         threading.Thread(target=self._process_answer_thread, args=(choice,), daemon=True).start()
 
     def _process_answer_thread(self, choice: str):
@@ -286,11 +326,17 @@ class LunaGuiApp(ctk.CTk):
         self.after(0, lambda: self._show_result(res, image_path, choice))
 
     def _show_result(self, res, image_path, user_choice):
+        self.progress_bar.stop()
+        self.progress_bar.place_forget()
+        self.loading_label.configure(text="")
+
         self.last_image_path = image_path
         for btn in self.btn_options.values(): btn.pack_forget()
 
         icon = "✅" if res.outcome == "corretta" else "❌"
+        # ORA "spiegazione_breve" DOVREBBE ESSERE CORRETTA E PIENA
         spieg = getattr(self.current_question, "spiegazione_breve", "")
+
         fb = f"{icon} Risposta {res.outcome.upper()}!\nCorretta: {self.current_question.corretta}\n\n{spieg}"
         self.question_text.configure(text=fb)
 

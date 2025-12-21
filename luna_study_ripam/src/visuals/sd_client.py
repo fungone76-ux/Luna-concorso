@@ -25,7 +25,7 @@ class SDClient:
         payload = {
             "prompt": prompt,
             "negative_prompt": negative_prompt,
-            "steps": 25,
+            "steps": 24,
             "cfg_scale": 7,
             "width": 512,  # Verticale per ritratti, puoi mettere 512x768 se vuoi
             "height": 768,
