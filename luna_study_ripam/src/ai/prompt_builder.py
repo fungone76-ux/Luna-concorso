@@ -88,37 +88,45 @@ def build_question_prompt(
 
     fewshot_block = ""
     if fewshot:
-        fewshot_block = "ESEMPI (SOLO PER FORMATO E STILE):\n" + "\n".join(
+        fewshot_block = "EXAMPLES (STYLE REFERENCE ONLY):\n" + "\n".join(
             json.dumps(x, ensure_ascii=False) for x in fewshot)
 
     topic_display = specific_topic if specific_topic else subject
 
-    # Selettore di intensità pose in base allo stage
+    # Selettore di intensità pose in base allo stage (TRADOTTO E PULITO)
     if stage >= 4:
-        pose_instructions = "USATE POSE ESPLICITE ED ESTREME: spread legs, on all fours, presenting ass, fingering, legs up, close-up genitals, from behind, doggystyle."
+        pose_instructions = "USE EXPLICIT & DYNAMIC BODY POSES: spread legs, on all fours, presenting ass, legs up, from behind, doggystyle, arched back."
     elif stage == 3:
-        pose_instructions = "USATE POSE PROVOCANTI: sitting on desk, spreading legs slightly, bending over, kneeling, hands on body, looking back."
+        pose_instructions = "USE TEASING BODY POSES: sitting on desk, spreading legs slightly, bending over, kneeling, hands on hips, looking back."
     else:
-        pose_instructions = "USATE POSE PROFESSIONALI MA SEDUCENTI: sitting, standing confident, leaning on wall, adjusting glasses."
+        pose_instructions = "USE CONFIDENT BODY POSES: sitting, standing, leaning on wall, crossing legs."
 
     prompt = f"""
 {system_rules}
 
-SEI UN ESPERTO SELEZIONATORE RIPAM (Formez PA) E UN REGISTA VISIVO.
+YOU ARE AN EXPERT EXAM CREATOR (RIPAM/Formez PA) AND AN AI VISUAL DIRECTOR.
 
---- OBIETTIVO 1: LA DOMANDA ---
-Genera una domanda a risposta multipla sul tema specifico: "{topic_display}".
-Usa la tua conoscenza storica dei concorsi 2019-2024 per replicare lo stile e la difficoltà.
-Crea distrattori insidiosi (date vicine, autorità simili).
+--- GOAL 1: THE QUESTION ---
+Generate a multiple-choice question on the specific topic: "{topic_display}".
+Use your historical knowledge of Italian public contests (2019-2024) to replicate the style and difficulty.
+Create tricky distractors.
 
---- OBIETTIVO 2: IL REGISTA (CAMPO 'VISUAL') ---
-Devi descrivere la posa del tutor nell'immagine che verrà generata.
-ATTUALE STAGE: {stage}
+--- GOAL 2: THE VISUAL DIRECTOR (FIELD 'VISUAL') ---
+You must describe the Tutor's pose for the AI image generator.
+CURRENT STAGE: {stage}
 {pose_instructions}
 
-IMPORTANTE: Varia SEMPRE la posa. Non usare sempre la stessa.
-Nel campo "visual" del JSON scrivi 3-4 tag inglesi che descrivono SOLO la posa e l'inquadratura (es. "low angle, from below, spreading legs").
-NON descrivere l'abbigliamento (ci pensa un altro sistema). Descrivi solo AZIONE e POSIZIONE.
+--- STRICT FACE SAFETY PROTOCOL (NO DEFORMATIONS) ---
+The AI image generator often distorts faces when facial tags are present.
+THEREFORE, YOU ARE STRICTLY FORBIDDEN FROM DESCRIBING THE FACE.
+
+1. **NO FACE TAGS:** Do NOT use words like: 'face', 'eyes', 'mouth', 'lips', 'expression', 'smile', 'stare', 'gaze', 'look'.
+2. **NO EMOTIONS:** Do NOT use words like: 'neutral', 'happy', 'seductive face', 'angry'.
+3. **NO HEAD DETAILS:** Do NOT use words like: 'glasses', 'hair', 'teeth'.
+
+**INSTRUCTION:** Focus 100% of the 'visual' tags on the BODY, POSE, and CAMERA ANGLE only.
+Example of VALID tags: "sitting on desk, low angle, legs crossed, hands on lap".
+Example of INVALID tags: "sitting on desk, seductive smile, looking at viewer".
 
 CONTESTO GIOCO:
 - Tutor: {tutor} | Stage: {stage}

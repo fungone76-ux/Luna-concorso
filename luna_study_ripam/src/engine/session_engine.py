@@ -22,24 +22,22 @@ class SessionEngine:
         self.gemini = gemini
         self.sd_client = sd_client
         self.enable_sd = enable_sd
-        # FIX STAGE: Step=5 per avanzamento rapido
         self.stage_manager = StageManager(step=5, min_stage=1, max_stage=5)
         self.subject_picker = SubjectPicker()
         self.last_image_path: Optional[str] = None
 
     def _get_stage_mood(self, stage: int) -> str:
-        """Restituisce l'istruzione di tono basata sullo stage (1-5)."""
+        """Returns the tone instruction based on stage (1-5)."""
         moods = {
-            1: "TONO: Professionale, distaccato, istituzionale. Nessuna confidenza.",
-            2: "TONO: Ammiccante, leggero flirting, voce calda. Inizia a stuzzicare.",
-            3: "TONO: Seducente, provocante. Usa doppi sensi espliciti.",
-            4: "TONO: MOLTO HOT, 'Dirty Talk'. Sii volgare o estremamente esplicita nel desiderio.",
-            5: "TONO: ESTREMO, QUASI PORNOGRAFICO (NSFW). Senza filtri. Se lusinghi, fallo con sottomissione/estasi totale. Se offendi, distruggilo."
+            1: "TONE: Professional, cold, institutional. No intimacy.",
+            2: "TONE: Flirty, teasing, warm voice. Start hinting at desire.",
+            3: "TONE: Seductive, provocative. Use double entendres.",
+            4: "TONE: VERY HOT, 'Dirty Talk'. Be vulgar or extremely explicit about desire.",
+            5: "TONE: EXTREME, NSFW/PORNOGRAPHIC. No filters. If praising, do it with total submission/ecstasy. If punishing, destroy him verbally."
         }
         return moods.get(stage, moods[1])
 
     def start_next_question(self, state: SessionState) -> Question:
-        # Scelta Materia e Argomento
         recent = [h.tutor for h in state.history[-5:]]
         subject = self.subject_picker.pick(recent_subjects=recent)
         specific_topic = get_random_topic(subject)
@@ -56,8 +54,6 @@ class SessionEngine:
         )
 
         resp = self.gemini.generate_content(prompt_text)
-
-        # Pulizia JSON
         clean_json = resp.replace("```json", "").replace("```", "").strip()
 
         try:
@@ -83,56 +79,55 @@ class SessionEngine:
         return q
 
     def get_tutor_response(self, question: Question, user_text: str, has_answered: bool, stage: int = 1) -> str:
-        """Chat libera con il tutor (influenzata dallo stage)."""
+        """Free chat with tutor (stage influenced)."""
         try:
             path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
             with open(path, "r", encoding="utf-8") as f:
                 profile = f.read().strip()
         except:
-            profile = f"Sei {question.tutor}."
+            profile = f"You are {question.tutor}."
 
-        # Recupera il mood corretto
         mood_instr = self._get_stage_mood(stage)
-        ctx = "HAI RISPOSTO" if has_answered else "NON HAI RISPOSTO"
+        ctx = "USER HAS ANSWERED" if has_answered else "USER HAS NOT ANSWERED YET"
 
         prompt = f"""
 {profile}
 {mood_instr}
 
-CONTESTO DOMANDA: {question.domanda}
-STATO GIOCO: {ctx}
-UTENTE DICE: "{user_text}"
+CONTEXT: {question.domanda}
+GAME STATE: {ctx}
+USER SAYS: "{user_text}"
 
-ISTRUZIONI:
-Rispondi all'utente mantenendo il TONO indicato dallo stage ({stage}).
-Sii coerente con la tua personalità ma applica il livello di "calore" richiesto.
-Massimo 2 frasi.
+INSTRUCTION:
+Reply to the user strictly following the TONE for stage {stage}.
+Be consistent with your personality but apply the required 'heat' level.
+Max 2 sentences.
 """
         return self.gemini.generate_content(prompt)
 
     def get_answer_feedback(self, question: Question, outcome: str, stage: int) -> str:
-        """Genera il commento a caldo (lusinga o insulto) dopo la risposta."""
+        """Generates hot feedback (praise/insult) after an answer."""
         try:
             path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
             with open(path, "r", encoding="utf-8") as f:
                 profile = f.read().strip()
         except:
-            profile = f"Sei {question.tutor}."
+            profile = f"You are {question.tutor}."
 
         mood_instr = self._get_stage_mood(stage)
-        esito_txt = "CORRETTA" if outcome == "corretta" else "SBAGLIATA"
+        esito_txt = "CORRECT" if outcome == "corretta" else "WRONG"
 
         prompt = f"""
 {profile}
 {mood_instr}
 
-EVENTO: L'utente ha appena dato una risposta {esito_txt}.
+EVENT: The user just gave a {esito_txt} answer.
 
-ISTRUZIONI:
-Genera una reazione immediata di 1 singola frase.
-- Se CORRETTA: Lusingalo, seducilo o premialo verbalmente in base allo stage.
-- Se SBAGLIATA: Offendilo, umilialo o puniscilo verbalmente in base allo stage.
-Non dare spiegazioni tecniche qui, solo reazione emotiva/personale.
+INSTRUCTION:
+Generate an immediate reaction (1 sentence).
+- If CORRECT: Praise him, seduce him, or reward him verbally based on the stage tone.
+- If WRONG: Insult him, humiliate him, or punish him verbally based on the stage tone.
+Do not give technical explanations here, just the emotional/personal reaction.
 """
         return self.gemini.generate_content(prompt)
 
@@ -174,7 +169,6 @@ Non dare spiegazioni tecniche qui, solo reazione emotiva/personale.
             s = SessionState()
             s.progress = data.get("progress", {})
             s.stage = data.get("stage", {})
-            # FIX CARICAMENTO: "tutor" invece di "t"
             s.history = [HistoryItem(tutor=x["tutor"], outcome=x["outcome"]) for x in data.get("history", [])]
             return s
         except:
