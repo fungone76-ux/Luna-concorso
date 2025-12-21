@@ -22,16 +22,26 @@ class SessionEngine:
         self.gemini = gemini
         self.sd_client = sd_client
         self.enable_sd = enable_sd
-        # --- FIX 1: Impostato step=5 per cambio livello ogni 5 punti ---
+        # FIX STAGE: Step=5 per avanzamento rapido
         self.stage_manager = StageManager(step=5, min_stage=1, max_stage=5)
         self.subject_picker = SubjectPicker()
         self.last_image_path: Optional[str] = None
 
+    def _get_stage_mood(self, stage: int) -> str:
+        """Restituisce l'istruzione di tono basata sullo stage (1-5)."""
+        moods = {
+            1: "TONO: Professionale, distaccato, istituzionale. Nessuna confidenza.",
+            2: "TONO: Ammiccante, leggero flirting, voce calda. Inizia a stuzzicare.",
+            3: "TONO: Seducente, provocante. Usa doppi sensi espliciti.",
+            4: "TONO: MOLTO HOT, 'Dirty Talk'. Sii volgare o estremamente esplicita nel desiderio.",
+            5: "TONO: ESTREMO, QUASI PORNOGRAFICO (NSFW). Senza filtri. Se lusinghi, fallo con sottomissione/estasi totale. Se offendi, distruggilo."
+        }
+        return moods.get(stage, moods[1])
+
     def start_next_question(self, state: SessionState) -> Question:
+        # Scelta Materia e Argomento
         recent = [h.tutor for h in state.history[-5:]]
         subject = self.subject_picker.pick(recent_subjects=recent)
-
-        # Topic Specifico
         specific_topic = get_random_topic(subject)
 
         tutor = tutor_for_subject(subject)
@@ -39,19 +49,22 @@ class SessionEngine:
         last_out = state.history[-1].outcome if state.history else "neutro"
 
         cfg = PromptBuildConfig(seed_per_prompt=3, strict_json_only=True)
+
         prompt_text = build_question_prompt(
             self.project_root, subject, tutor, stage, last_out, cfg,
             specific_topic=specific_topic
         )
 
         resp = self.gemini.generate_content(prompt_text)
+
+        # Pulizia JSON
         clean_json = resp.replace("```json", "").replace("```", "").strip()
 
         try:
             data = json.loads(clean_json)
         except:
-            data = {"domanda": "Errore API", "opzioni": {"A": ".", "B": ".", "C": ".", "D": "."}, "corretta": "A",
-                    "tutor": tutor, "materia": subject}
+            data = {"domanda": "Errore lettura dati. Riprova.", "opzioni": {"A": ".", "B": ".", "C": ".", "D": "."},
+                    "corretta": "A", "tutor": tutor, "materia": subject}
 
         spieg = data.get("spiegazione_breve") or data.get("spiegazione", "...")
 
@@ -69,7 +82,8 @@ class SessionEngine:
         )
         return q
 
-    def get_tutor_response(self, question: Question, user_text: str, has_answered: bool) -> str:
+    def get_tutor_response(self, question: Question, user_text: str, has_answered: bool, stage: int = 1) -> str:
+        """Chat libera con il tutor (influenzata dallo stage)."""
         try:
             path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
             with open(path, "r", encoding="utf-8") as f:
@@ -77,8 +91,49 @@ class SessionEngine:
         except:
             profile = f"Sei {question.tutor}."
 
+        # Recupera il mood corretto
+        mood_instr = self._get_stage_mood(stage)
         ctx = "HAI RISPOSTO" if has_answered else "NON HAI RISPOSTO"
-        prompt = f"{profile}\n\nCONTESTO: {question.domanda}\nSTATO: {ctx}\nUSER: {user_text}\nRISPONDI (max 2 frasi):"
+
+        prompt = f"""
+{profile}
+{mood_instr}
+
+CONTESTO DOMANDA: {question.domanda}
+STATO GIOCO: {ctx}
+UTENTE DICE: "{user_text}"
+
+ISTRUZIONI:
+Rispondi all'utente mantenendo il TONO indicato dallo stage ({stage}).
+Sii coerente con la tua personalità ma applica il livello di "calore" richiesto.
+Massimo 2 frasi.
+"""
+        return self.gemini.generate_content(prompt)
+
+    def get_answer_feedback(self, question: Question, outcome: str, stage: int) -> str:
+        """Genera il commento a caldo (lusinga o insulto) dopo la risposta."""
+        try:
+            path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
+            with open(path, "r", encoding="utf-8") as f:
+                profile = f.read().strip()
+        except:
+            profile = f"Sei {question.tutor}."
+
+        mood_instr = self._get_stage_mood(stage)
+        esito_txt = "CORRETTA" if outcome == "corretta" else "SBAGLIATA"
+
+        prompt = f"""
+{profile}
+{mood_instr}
+
+EVENTO: L'utente ha appena dato una risposta {esito_txt}.
+
+ISTRUZIONI:
+Genera una reazione immediata di 1 singola frase.
+- Se CORRETTA: Lusingalo, seducilo o premialo verbalmente in base allo stage.
+- Se SBAGLIATA: Offendilo, umilialo o puniscilo verbalmente in base allo stage.
+Non dare spiegazioni tecniche qui, solo reazione emotiva/personale.
+"""
         return self.gemini.generate_content(prompt)
 
     def apply_answer(self, state: SessionState, question: Question, user_choice: str):
@@ -119,7 +174,7 @@ class SessionEngine:
             s = SessionState()
             s.progress = data.get("progress", {})
             s.stage = data.get("stage", {})
-            # --- FIX 2: Corretto 't' in 'tutor' ---
+            # FIX CARICAMENTO: "tutor" invece di "t"
             s.history = [HistoryItem(tutor=x["tutor"], outcome=x["outcome"]) for x in data.get("history", [])]
             return s
         except:

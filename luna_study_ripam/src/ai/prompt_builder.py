@@ -93,25 +93,32 @@ def build_question_prompt(
 
     topic_display = specific_topic if specific_topic else subject
 
+    # Selettore di intensità pose in base allo stage
+    if stage >= 4:
+        pose_instructions = "USATE POSE ESPLICITE ED ESTREME: spread legs, on all fours, presenting ass, fingering, legs up, close-up genitals, from behind, doggystyle."
+    elif stage == 3:
+        pose_instructions = "USATE POSE PROVOCANTI: sitting on desk, spreading legs slightly, bending over, kneeling, hands on body, looking back."
+    else:
+        pose_instructions = "USATE POSE PROFESSIONALI MA SEDUCENTI: sitting, standing confident, leaning on wall, adjusting glasses."
+
     prompt = f"""
 {system_rules}
 
-SEI UN ESPERTO SELEZIONATORE RIPAM (Formez PA).
-Il tuo compito è creare UNA domanda a risposta multipla per il concorso Ministero della Cultura (Assistenti).
+SEI UN ESPERTO SELEZIONATORE RIPAM (Formez PA) E UN REGISTA VISIVO.
 
---- REGOLE SULLE FONTI (MEMORIA STORICA) ---
-1. Verifica nella tua conoscenza interna le domande usate nei concorsi RIPAM recenti (2019-2024) per profili amministrativi (es. ACI, MIC, MAECI, Giustizia).
-2. Usa quelle domande reali come "template" per la difficoltà e lo stile.
-3. Non inventare casi astrusi: attieniti alla normativa vigente (es. D.Lgs 36/2023 per appalti).
+--- OBIETTIVO 1: LA DOMANDA ---
+Genera una domanda a risposta multipla sul tema specifico: "{topic_display}".
+Usa la tua conoscenza storica dei concorsi 2019-2024 per replicare lo stile e la difficoltà.
+Crea distrattori insidiosi (date vicine, autorità simili).
 
---- OBIETTIVO DEL GENERATORE ---
-Generare una domanda sul tema specifico: "{topic_display}".
+--- OBIETTIVO 2: IL REGISTA (CAMPO 'VISUAL') ---
+Devi descrivere la posa del tutor nell'immagine che verrà generata.
+ATTUALE STAGE: {stage}
+{pose_instructions}
 
---- REGOLE PER I DISTRATTORI (RISPOSTE ERRATE) ---
-Le risposte errate devono essere "Distrattori RIPAM":
-- Plausibili ma tecnicamente inesatte.
-- Simili alla corretta ma con termini, scadenze o autorità cambiati (es. "30 giorni" vs "60 giorni", "Prefetto" vs "Questore").
-- Devono mettere in dubbio il candidato.
+IMPORTANTE: Varia SEMPRE la posa. Non usare sempre la stessa.
+Nel campo "visual" del JSON scrivi 3-4 tag inglesi che descrivono SOLO la posa e l'inquadratura (es. "low angle, from below, spreading legs").
+NON descrivere l'abbigliamento (ci pensa un altro sistema). Descrivi solo AZIONE e POSIZIONE.
 
 CONTESTO GIOCO:
 - Tutor: {tutor} | Stage: {stage}
