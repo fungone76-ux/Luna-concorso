@@ -92,13 +92,13 @@ class LunaGuiApp(ctk.CTk):
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=0)  # Header
-        self.grid_rowconfigure(1, weight=1)  # Main Content
+        self.grid_rowconfigure(1, weight=1)  # Main Content (Image/Exam)
         self.grid_rowconfigure(2, weight=0)  # Chat/Exam Text
         self.grid_rowconfigure(3, weight=0)  # Options
         self.grid_rowconfigure(4, weight=0)  # Input/Nav
 
         self._setup_ui()
-        self.after(100, self.start_turn)
+        self.after(100, self.start_turn)  # Avvia modalità gioco di default
 
     def _init_engine(self):
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -133,7 +133,7 @@ class LunaGuiApp(ctk.CTk):
                                       text_color="#aebac1")
         self.lbl_stats.pack(side="right", padx=10, pady=10)
 
-        # 2. IMAGE AREA
+        # 2. IMAGE / EXAM STATUS AREA
         self.image_frame = ctk.CTkFrame(self, fg_color="#0b141a", corner_radius=0)
         self.image_frame.grid(row=1, column=0, sticky="nsew")
 
@@ -141,7 +141,9 @@ class LunaGuiApp(ctk.CTk):
         self.image_label.place(relx=0.5, rely=0.5, anchor="center")
         self.image_label.bind("<Button-1>", self.open_image_viewer)
 
+        # Widget specifici Esame/Loading
         self.lbl_timer = ctk.CTkLabel(self.image_frame, text="", font=("Courier", 24, "bold"), text_color="#ef4444")
+
         self.loading_label = ctk.CTkLabel(self.image_frame, text="", text_color="#00a884",
                                           font=("Helvetica", 14, "bold"))
         self.loading_label.place(relx=0.5, rely=0.45, anchor="center")
@@ -169,11 +171,12 @@ class LunaGuiApp(ctk.CTk):
 
         self.btn_next = ctk.CTkButton(self.options_frame, text="Prossima Domanda ➤", font=("Helvetica", 16, "bold"),
                                       fg_color="#00a884", height=50, corner_radius=10, command=self.start_turn)
+
         self.btn_skip = ctk.CTkButton(self.options_frame, text="SALTA (Omessa) ⏭️", font=("Helvetica", 14),
                                       fg_color="#eab308", hover_color="#ca8a04", height=40, corner_radius=10,
                                       command=lambda: self.submit_answer(None))
 
-        # 5. INPUT
+        # 5. INPUT (Solo gioco)
         self.input_frame = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color="#202c33")
         self.input_frame.grid(row=4, column=0, sticky="ew")
         self.input_frame.grid_columnconfigure(0, weight=1)
@@ -185,32 +188,50 @@ class LunaGuiApp(ctk.CTk):
                                       fg_color="#00a884", command=self.send_message)
         self.btn_send.grid(row=0, column=1, padx=(0, 15), pady=10)
 
+    # --- NUOVA FUNZIONE STATISTICHE ---
     def _update_stats_display(self):
-        if not self.current_question or self.is_exam_mode: return
+        """Calcola e aggiorna le statistiche in tempo reale per il tutor corrente."""
+        if not self.current_question or self.is_exam_mode:
+            return
+
         tutor = self.current_question.tutor
-        total, correct = 0, 0
+
+        # 1. Calcolo Statistiche dalla cronologia (History)
+        total_questions = 0
+        correct_answers = 0
+
         for h in self.session_state.history:
             if h.tutor == tutor:
-                total += 1
-                if h.outcome == "corretta": correct += 1
-        pct = int((correct / total) * 100) if total > 0 else 0
+                total_questions += 1
+                if h.outcome == "corretta":
+                    correct_answers += 1
+
+        percentage = int((correct_answers / total_questions) * 100) if total_questions > 0 else 0
+
+        # 2. Recupera Stage e Punti
         stage = self.session_state.stage.get(tutor, 1)
         points = self.session_state.progress.get(tutor, 0)
-        self.lbl_stats.configure(text=f"{tutor}: {correct}/{total} ({pct}%) | Stage: {stage} | Punti: {points}")
+
+        # 3. Aggiorna Label
+        stats_text = f"{tutor}: {correct_answers}/{total_questions} ({percentage}%) | Stage: {stage} | Punti: {points}"
+        self.lbl_stats.configure(text=stats_text)
 
     # --- MODALITA' ESAME ---
     def start_exam_mode(self):
         stop()
         self.is_exam_mode = True
         self.exam_session = self.exam_engine.start_exam()
+
         self.image_label.configure(image="")
         self.image_label.image = None
         self.lbl_stats.configure(text="MODALITÀ ESAME")
         self.btn_exam.configure(state="disabled", text="ESAME IN CORSO")
+
         self.input_frame.grid_forget()
         self.lbl_timer.place(relx=0.5, rely=0.1, anchor="center")
         self._update_timer()
         self.btn_skip.pack(fill="x", padx=20, pady=(0, 10))
+
         self.next_exam_question()
 
     def next_exam_question(self):
@@ -228,21 +249,27 @@ class LunaGuiApp(ctk.CTk):
         self.progress_bar.stop()
         self.progress_bar.place_forget()
         self.loading_label.configure(text="")
+
         if not q:
             self._end_exam()
             return
+
         self.current_question = q
         self.can_answer = True
+
         idx = self.exam_session.current_index + 1
         total = len(self.exam_session.subject_roadmap)
         self.lbl_tutor_info.configure(text=f"Domanda {idx}/{total}")
+
         self.question_text.configure(text=f"[{q.materia}]\n\n{q.domanda}")
+
         for letter in ["A", "B", "C", "D"]:
             raw = q.opzioni.get(letter, "---")
             wrap = "\n".join(textwrap.wrap(raw, width=55))
             btn = self.btn_options[letter]
             btn.configure(text=f"{letter}) {wrap}", fg_color="#2a3942", state="normal")
             btn.pack(fill="x", padx=20, pady=4)
+
         self.btn_skip.configure(state="normal")
 
     def _update_timer(self):
@@ -282,9 +309,11 @@ class LunaGuiApp(ctk.CTk):
         self.btn_next.pack_forget()
         self.btn_skip.pack_forget()
         self.lbl_timer.place_forget()
+
         self.loading_label.configure(text="Generazione domanda con Gemini...")
         self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
         self.progress_bar.start()
+
         threading.Thread(target=self._generate_question_thread, daemon=True).start()
 
     def _generate_question_thread(self):
@@ -298,22 +327,29 @@ class LunaGuiApp(ctk.CTk):
         self.progress_bar.stop()
         self.progress_bar.place_forget()
         self.loading_label.configure(text="")
+
         self.current_question = q
         self.can_answer = True
         self.question_text.configure(text=q.domanda)
+
         for letter in ["A", "B", "C", "D"]:
             raw = q.opzioni.get(letter, "---")
             wrap = "\n".join(textwrap.wrap(raw, width=55))
             btn = self.btn_options[letter]
             btn.configure(text=f"{letter}) {wrap}", fg_color="#2a3942", state="normal")
             btn.pack(fill="x", padx=20, pady=4)
+
         tutor = q.tutor
         self.lbl_tutor_info.configure(text=f"{tutor} (Online)")
+
+        # AGGIORNAMENTO STATISTICHE VISIVE
         self._update_stats_display()
+
         self.entry_msg.configure(state="normal")
         self.btn_send.configure(state="normal")
         self.entry_msg.delete(0, "end")
         self.entry_msg.focus()
+
         text_to_read = f"Domanda. {q.domanda}. "
         for l in ["A", "B", "C", "D"]:
             if q.opzioni.get(l): text_to_read += f"Risposta {l}. {q.opzioni[l]}. "
@@ -323,6 +359,7 @@ class LunaGuiApp(ctk.CTk):
         if not self.can_answer: return
         stop()
         self.can_answer = False
+
         if self.is_exam_mode:
             self.exam_engine.submit_answer(self.exam_session, choice)
             self.exam_session.current_index += 1
@@ -334,28 +371,24 @@ class LunaGuiApp(ctk.CTk):
             threading.Thread(target=self._process_game_answer_thread, args=(choice,), daemon=True).start()
 
     def _process_game_answer_thread(self, choice):
-        # 1. Calcola esito
         res = self.engine.apply_answer(self.session_state, self.current_question, choice)
         image_path = self.engine.last_image_path
+        self.after(0, lambda: self._show_result(res, image_path, choice))
 
-        # 2. Genera reazione "HOT" del tutor
-        feedback_text = self.engine.get_answer_feedback(self.current_question, res.outcome, res.new_stage)
-
-        self.after(0, lambda: self._show_result(res, image_path, choice, feedback_text))
-
-    def _show_result(self, res, image_path, user_choice, feedback_text):
+    def _show_result(self, res, image_path, user_choice):
         self.progress_bar.stop()
         self.progress_bar.place_forget()
         self.loading_label.configure(text="")
+
+        # AGGIORNAMENTO STATISTICHE POST-RISPOSTA
         self._update_stats_display()
+
         self.last_image_path = image_path
         for btn in self.btn_options.values(): btn.pack_forget()
 
         icon = "✅" if res.outcome == "corretta" else "❌"
         spieg = getattr(self.current_question, "spiegazione_breve", "")
-
-        # Mostra la reazione del tutor PRIMA della spiegazione tecnica
-        fb = f"{feedback_text}\n\n{icon} Risposta {res.outcome.upper()}!\nCorretta: {self.current_question.corretta}\n\n{spieg}"
+        fb = f"{icon} Risposta {res.outcome.upper()}!\nCorretta: {self.current_question.corretta}\n\n{spieg}"
         self.question_text.configure(text=fb)
 
         self.btn_next.pack(fill="x", padx=20, pady=10)
@@ -369,8 +402,10 @@ class LunaGuiApp(ctk.CTk):
         self.btn_send.configure(state="normal")
         self.entry_msg.focus()
 
-        # Legge il feedback (Reazione + Spiegazione)
-        speak(f"{feedback_text}. {spieg}")
+        audio_fb = f"Risposta {res.outcome}. "
+        if res.outcome != "corretta": audio_fb += f"La giusta era {self.current_question.corretta}. "
+        audio_fb += spieg
+        speak(audio_fb)
 
     def save_game(self):
         file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -399,10 +434,7 @@ class LunaGuiApp(ctk.CTk):
 
     def _chat_thread(self, text):
         has_answered = not self.can_answer
-        tutor = self.current_question.tutor
-        stage = self.session_state.stage.get(tutor, 1)
-        # Passiamo lo stage per avere la risposta "in tono"
-        resp = self.engine.get_tutor_response(self.current_question, text, has_answered, stage)
+        resp = self.engine.get_tutor_response(self.current_question, text, has_answered)
         self.after(0, lambda: self._update_chat(resp))
 
     def _update_chat(self, text):

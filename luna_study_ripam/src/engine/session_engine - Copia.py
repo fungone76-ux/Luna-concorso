@@ -22,8 +22,7 @@ class SessionEngine:
         self.gemini = gemini
         self.sd_client = sd_client
         self.enable_sd = enable_sd
-        # --- FIX 1: Impostato step=5 per cambio livello ogni 5 punti ---
-        self.stage_manager = StageManager(step=5, min_stage=1, max_stage=5)
+        self.stage_manager = StageManager(step=10, min_stage=1, max_stage=5)
         self.subject_picker = SubjectPicker()
         self.last_image_path: Optional[str] = None
 
@@ -119,8 +118,7 @@ class SessionEngine:
             s = SessionState()
             s.progress = data.get("progress", {})
             s.stage = data.get("stage", {})
-            # --- FIX 2: Corretto 't' in 'tutor' ---
-            s.history = [HistoryItem(tutor=x["tutor"], outcome=x["outcome"]) for x in data.get("history", [])]
+            s.history = [HistoryItem(t=x["tutor"], outcome=x["outcome"]) for x in data.get("history", [])]
             return s
         except:
             return None
