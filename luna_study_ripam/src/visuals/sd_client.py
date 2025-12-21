@@ -34,7 +34,7 @@ class SDClient:
         }
 
         try:
-            response = requests.post(f"{self.config.url}/sdapi/v1/txt2img", json=payload, timeout=60)
+            response = requests.post(f"{self.config.url}/sdapi/v1/txt2img", json=payload, timeout=760)
 
             if response.status_code == 200:
                 r = response.json()

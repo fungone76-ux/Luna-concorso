@@ -1,3 +1,4 @@
+# src/gui_main.py
 import os
 import threading
 import time
@@ -314,10 +315,13 @@ class LunaGuiApp(ctk.CTk):
         self.btn_send.configure(state="normal")
         self.entry_msg.delete(0, "end")
         self.entry_msg.focus()
+
         text_to_read = f"Domanda. {q.domanda}. "
         for l in ["A", "B", "C", "D"]:
             if q.opzioni.get(l): text_to_read += f"Risposta {l}. {q.opzioni[l]}. "
-        speak(text_to_read)
+
+        # --- FIX: Passa il tutor al narratore ---
+        speak(text_to_read, tutor=q.tutor)
 
     def submit_answer(self, choice: str):
         if not self.can_answer: return
@@ -369,8 +373,8 @@ class LunaGuiApp(ctk.CTk):
         self.btn_send.configure(state="normal")
         self.entry_msg.focus()
 
-        # Legge il feedback (Reazione + Spiegazione)
-        speak(f"{feedback_text}. {spieg}")
+        # --- FIX: Passa il tutor al narratore ---
+        speak(f"{feedback_text}. {spieg}", tutor=self.current_question.tutor)
 
     def save_game(self):
         file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -408,7 +412,8 @@ class LunaGuiApp(ctk.CTk):
     def _update_chat(self, text):
         cur = self.question_text.cget("text")
         self.question_text.configure(text=f"{cur}\n\n{self.current_question.tutor}: {text}")
-        speak(text)
+        # --- FIX: Passa il tutor al narratore ---
+        speak(text, tutor=self.current_question.tutor)
 
     def _load_image_to_ui(self, path):
         try:
