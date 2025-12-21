@@ -129,7 +129,7 @@ class LunaGuiApp(ctk.CTk):
                                       command=self.load_game)
         self.btn_load.pack(side="right", padx=5, pady=10)
 
-        self.lbl_stats = ctk.CTkLabel(self.header_frame, text="S: 1 | P: 0", font=("Helvetica", 12),
+        self.lbl_stats = ctk.CTkLabel(self.header_frame, text="-- Statistiche --", font=("Helvetica", 12),
                                       text_color="#aebac1")
         self.lbl_stats.pack(side="right", padx=10, pady=10)
 
@@ -188,9 +188,36 @@ class LunaGuiApp(ctk.CTk):
                                       fg_color="#00a884", command=self.send_message)
         self.btn_send.grid(row=0, column=1, padx=(0, 15), pady=10)
 
+    # --- NUOVA FUNZIONE STATISTICHE ---
+    def _update_stats_display(self):
+        """Calcola e aggiorna le statistiche in tempo reale per il tutor corrente."""
+        if not self.current_question or self.is_exam_mode:
+            return
+
+        tutor = self.current_question.tutor
+
+        # 1. Calcolo Statistiche dalla cronologia (History)
+        total_questions = 0
+        correct_answers = 0
+
+        for h in self.session_state.history:
+            if h.tutor == tutor:
+                total_questions += 1
+                if h.outcome == "corretta":
+                    correct_answers += 1
+
+        percentage = int((correct_answers / total_questions) * 100) if total_questions > 0 else 0
+
+        # 2. Recupera Stage e Punti
+        stage = self.session_state.stage.get(tutor, 1)
+        points = self.session_state.progress.get(tutor, 0)
+
+        # 3. Aggiorna Label
+        stats_text = f"{tutor}: {correct_answers}/{total_questions} ({percentage}%) | Stage: {stage} | Punti: {points}"
+        self.lbl_stats.configure(text=stats_text)
+
     # --- MODALITA' ESAME ---
     def start_exam_mode(self):
-        """Avvia la simulazione esame."""
         stop()
         self.is_exam_mode = True
         self.exam_session = self.exam_engine.start_exam()
@@ -212,7 +239,6 @@ class LunaGuiApp(ctk.CTk):
         self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
         self.progress_bar.start()
         self.set_ui_state("disabled")
-
         threading.Thread(target=self._exam_fetch_thread, daemon=True).start()
 
     def _exam_fetch_thread(self):
@@ -248,14 +274,11 @@ class LunaGuiApp(ctk.CTk):
 
     def _update_timer(self):
         if not self.is_exam_mode or not self.exam_session: return
-
         elapsed = time.time() - self.exam_session.start_time
         remaining = self.exam_session.duration_seconds - elapsed
-
         if remaining <= 0:
             self._end_exam()
             return
-
         mins, secs = divmod(int(remaining), 60)
         self.lbl_timer.configure(text=f"{mins:02d}:{secs:02d}")
         self.exam_timer_id = self.after(1000, self._update_timer)
@@ -263,14 +286,11 @@ class LunaGuiApp(ctk.CTk):
     def _end_exam(self):
         if self.exam_timer_id: self.after_cancel(self.exam_timer_id)
         self.is_exam_mode = False
-
         score, passed, report = self.exam_engine.calculate_result(self.exam_session)
-
-        self.question_text.configure(text=f"ESAME TERMINATO\n\n{report}")
+        self.question_text.configure(text=report)
         for btn in self.btn_options.values(): btn.pack_forget()
         self.btn_skip.pack_forget()
         self.lbl_timer.place_forget()
-
         self.btn_exam.configure(state="normal", text="SIMULAZIONE ESAME")
         self.btn_next.pack(fill="x", padx=20, pady=10)
         self.btn_next.configure(text="Torna al Gioco", command=self.restore_game_mode)
@@ -281,23 +301,7 @@ class LunaGuiApp(ctk.CTk):
         self.btn_next.configure(text="Prossima Domanda ➤", command=self.start_turn)
         self.start_turn()
 
-    # --- LOGICA CONDIVISA SUBMIT ---
-    def submit_answer(self, choice: str):
-        if not self.can_answer: return
-        stop()
-        self.can_answer = False
-
-        if self.is_exam_mode:
-            self.exam_engine.submit_answer(self.exam_session, choice)
-            self.exam_session.current_index += 1
-            self.next_exam_question()
-        else:
-            self.loading_label.configure(text="Analisi risposta...")
-            self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
-            self.progress_bar.start()
-            threading.Thread(target=self._process_game_answer_thread, args=(choice,), daemon=True).start()
-
-    # --- RESTO LOGICA GIOCO ---
+    # --- LOGICA GIOCO ---
     def start_turn(self):
         stop()
         self.is_exam_mode = False
@@ -319,9 +323,7 @@ class LunaGuiApp(ctk.CTk):
         except Exception as e:
             print(f"Errore generazione: {e}")
 
-    # --- FUNZIONE REINSERITA (FIX ERRORE) ---
     def _display_question(self, q: Question):
-        """Visualizza la domanda nella modalità GIOCO."""
         self.progress_bar.stop()
         self.progress_bar.place_forget()
         self.loading_label.configure(text="")
@@ -338,21 +340,35 @@ class LunaGuiApp(ctk.CTk):
             btn.pack(fill="x", padx=20, pady=4)
 
         tutor = q.tutor
-        prog = self.session_state.progress.get(tutor, 0)
-        stage = self.session_state.stage.get(tutor, 1)
         self.lbl_tutor_info.configure(text=f"{tutor} (Online)")
-        self.lbl_stats.configure(text=f"S: {stage} | P: {prog}")
+
+        # AGGIORNAMENTO STATISTICHE VISIVE
+        self._update_stats_display()
 
         self.entry_msg.configure(state="normal")
         self.btn_send.configure(state="normal")
         self.entry_msg.delete(0, "end")
         self.entry_msg.focus()
 
-        # Lettura
         text_to_read = f"Domanda. {q.domanda}. "
         for l in ["A", "B", "C", "D"]:
             if q.opzioni.get(l): text_to_read += f"Risposta {l}. {q.opzioni[l]}. "
         speak(text_to_read)
+
+    def submit_answer(self, choice: str):
+        if not self.can_answer: return
+        stop()
+        self.can_answer = False
+
+        if self.is_exam_mode:
+            self.exam_engine.submit_answer(self.exam_session, choice)
+            self.exam_session.current_index += 1
+            self.next_exam_question()
+        else:
+            self.loading_label.configure(text="Analisi risposta...")
+            self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
+            self.progress_bar.start()
+            threading.Thread(target=self._process_game_answer_thread, args=(choice,), daemon=True).start()
 
     def _process_game_answer_thread(self, choice):
         res = self.engine.apply_answer(self.session_state, self.current_question, choice)
@@ -364,6 +380,9 @@ class LunaGuiApp(ctk.CTk):
         self.progress_bar.place_forget()
         self.loading_label.configure(text="")
 
+        # AGGIORNAMENTO STATISTICHE POST-RISPOSTA
+        self._update_stats_display()
+
         self.last_image_path = image_path
         for btn in self.btn_options.values(): btn.pack_forget()
 
@@ -373,7 +392,6 @@ class LunaGuiApp(ctk.CTk):
         self.question_text.configure(text=fb)
 
         self.btn_next.pack(fill="x", padx=20, pady=10)
-        self.lbl_stats.configure(text=f"S: {res.new_stage} | P: {res.new_progress}")
 
         if image_path and os.path.exists(image_path):
             self._load_image_to_ui(image_path)

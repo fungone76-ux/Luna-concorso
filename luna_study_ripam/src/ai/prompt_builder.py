@@ -11,40 +11,30 @@ from typing import Dict, List, Optional
 @dataclass(frozen=True)
 class PromptBuildConfig:
     seed_per_prompt: int = 4
-    # se True, inserisce nel prompt una “sezione severa” anti-output extra
     strict_json_only: bool = True
 
 
 def _read_text(path: str) -> str:
-    if not os.path.exists(path):
-        return ""
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read().strip()
+    if not os.path.exists(path): return ""
+    with open(path, "r", encoding="utf-8") as f: return f.read().strip()
 
 
 def _load_jsonl(path: str) -> List[Dict]:
-    rows: List[Dict] = []
-    if not os.path.exists(path):
-        return rows
+    rows = []
+    if not os.path.exists(path): return rows
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except Exception:
-                # se una riga è rotta la ignoriamo (meglio robusto)
-                continue
+            if line.strip():
+                try:
+                    rows.append(json.loads(line.strip()))
+                except:
+                    continue
     return rows
 
 
 def _sample(rows: List[Dict], k: int, rng: random.Random) -> List[Dict]:
-    if not rows:
-        return []
-    if len(rows) <= k:
-        return rows
-    return rng.sample(rows, k)
+    if not rows: return []
+    return rng.sample(rows, min(len(rows), k))
 
 
 def subject_to_instruction_filename(subject: str) -> str:
@@ -66,30 +56,12 @@ def subject_to_instruction_filename(subject: str) -> str:
         "Sicurezza (D.Lgs. 81/2008)": "sicurezza81.txt",
         "Contratti pubblici": "contratti_pubblici.txt",
     }
-    # fallback
     return mapping.get(subject, "logica.txt")
 
 
 def subject_to_seed_filename(subject: str) -> str:
-    mapping = {
-        "Diritto amministrativo": "seed_amministrativo.jsonl",
-        "Logica": "seed_logica.jsonl",
-        "Quesiti situazionali": "seed_situazionali.jsonl",
-        "Informatica (TIC)": "seed_informatica.jsonl",
-        "Inglese A2": "seed_inglese_a2.jsonl",
-        "Codice dell'Amministrazione Digitale (CAD)": "seed_cad.jsonl",
-        "Diritto dell'Unione Europea": "seed_diritto_ue.jsonl",
-        "Contabilità di Stato": "seed_contabilita_stato.jsonl",
-        "Diritto penale (PA)": "seed_penale_pa.jsonl",
-        "Lavoro pubblico": "seed_lavoro_pubblico.jsonl",
-        "Responsabilità del dipendente pubblico": "seed_responsabilita_dp.jsonl",
-        "Beni culturali": "seed_beni_culturali.jsonl",
-        "Struttura MIC": "seed_mic_struttura.jsonl",
-        "Marketing e comunicazione PA": "seed_marketing_comunicazione.jsonl",
-        "Sicurezza (D.Lgs. 81/2008)": "seed_sicurezza81.jsonl",
-        "Contratti pubblici": "seed_contratti_pubblici.jsonl",
-    }
-    return mapping.get(subject, "seed_logica.jsonl")
+    base = "seed_" + subject_to_instruction_filename(subject).replace(".txt", ".jsonl")
+    return base
 
 
 def build_question_prompt(
@@ -99,105 +71,59 @@ def build_question_prompt(
         stage: int,
         outcome_hint: str,
         cfg: PromptBuildConfig,
+        specific_topic: str = "",
         rng: Optional[random.Random] = None,
 ) -> str:
-    """
-    Crea il prompt per generare UNA domanda (stile RIPAM) + campi visuali.
-
-    Parametri:
-    - project_root: root del progetto (cartella che contiene prompts/, data/, src/)
-    - subject: materia estratta
-    - tutor: tutor associata (tono/persona, ma la domanda resta da concorso)
-    - stage: stage corrente della tutor (1..5)
-    - outcome_hint: "corretta"/"errata"/"omessa" (solo come contesto per i tag/visual del prossimo frame)
-    - cfg: configurazione prompt
-    - rng: per scegliere i seed
-
-    Output atteso dall'LLM:
-    - JSON valido (nessun testo extra)
-    - conforme a prompts/output_schema.json
-    """
     rng = rng or random.Random()
 
-    # --- PERCORSI FILE ---
-    # 1. Aggiunto il System Prompt (regole base + divieti tag)
-    system_prompt_path = os.path.join(project_root, "prompts", "system_prompt.txt")
+    system_rules = _read_text(os.path.join(project_root, "prompts", "system_prompt.txt"))
+    general_rules = _read_text(os.path.join(project_root, "prompts", "question_instructions", "_general_rules.txt"))
+    instr_path = os.path.join(project_root, "prompts", "question_instructions",
+                              subject_to_instruction_filename(subject))
+    schema_text = _read_text(os.path.join(project_root, "prompts", "output_schema.json"))
 
-    general_rules_path = os.path.join(project_root, "prompts", "question_instructions", "_general_rules.txt")
-    instr_path = os.path.join(
-        project_root,
-        "prompts",
-        "question_instructions",
-        subject_to_instruction_filename(subject),
-    )
-    schema_path = os.path.join(project_root, "prompts", "output_schema.json")
-
-    seed_path = os.path.join(
-        project_root,
-        "data",
-        "question_banks",
-        subject_to_seed_filename(subject),
-    )
-
-    # --- LETTURA CONTENUTI ---
-    system_rules = _read_text(system_prompt_path)
-    general_rules = _read_text(general_rules_path)
-    subject_instructions = _read_text(instr_path)
-    schema_text = _read_text(schema_path)
-
+    seed_path = os.path.join(project_root, "data", "question_banks", subject_to_seed_filename(subject))
     seed_rows = _load_jsonl(seed_path)
     fewshot = _sample(seed_rows, cfg.seed_per_prompt, rng)
 
     fewshot_block = ""
     if fewshot:
-        # IMPORTANT: sono esempi “di stile”, NON da copiare
-        fewshot_block = "ESEMPI (solo stile, NON copiare e NON ripetere):\n" + "\n".join(
-            json.dumps(x, ensure_ascii=False) for x in fewshot
-        )
+        fewshot_block = "ESEMPI (SOLO PER FORMATO E STILE):\n" + "\n".join(
+            json.dumps(x, ensure_ascii=False) for x in fewshot)
 
-    strict = ""
-    if cfg.strict_json_only:
-        strict = (
-            "VINCOLO FORTISSIMO:\n"
-            "- Rispondi SOLO con JSON valido.\n"
-            "- Vietato testo extra, vietati backticks, vietati commenti.\n"
-            "- Nessuna spiegazione fuori dal JSON.\n"
-        )
+    topic_display = specific_topic if specific_topic else subject
 
-    # --- COSTRUZIONE PROMPT ---
-    # Inseriamo 'system_rules' in testa, così l'IA sa cosa NON deve mettere nei tag.
     prompt = f"""
 {system_rules}
 
-Sei un generatore di domande per concorso pubblico RIPAM.
-Genera 1 domanda nuova (non vista prima) per la prova del MIC (Assistente vigilanza/accoglienza).
+SEI UN ESPERTO SELEZIONATORE RIPAM (Formez PA).
+Il tuo compito è creare UNA domanda a risposta multipla per il concorso Ministero della Cultura (Assistenti).
 
-CONTESTO GIOCO (solo per tono e visual):
-- Tutor attiva: {tutor}
-- Materia: {subject}
-- Stage tutor: {stage} (1=vestita ... 5=hot non-explicit)
-- Ultimo esito utente: {outcome_hint} (usa solo per mood dei tag/visual)
+--- REGOLE SULLE FONTI (MEMORIA STORICA) ---
+1. Verifica nella tua conoscenza interna le domande usate nei concorsi RIPAM recenti (2019-2024) per profili amministrativi (es. ACI, MIC, MAECI, Giustizia).
+2. Usa quelle domande reali come "template" per la difficoltà e lo stile.
+3. Non inventare casi astrusi: attieniti alla normativa vigente (es. D.Lgs 36/2023 per appalti).
 
-{strict}
+--- OBIETTIVO DEL GENERATORE ---
+Generare una domanda sul tema specifico: "{topic_display}".
 
-REGOLE GENERALI:
+--- REGOLE PER I DISTRATTORI (RISPOSTE ERRATE) ---
+Le risposte errate devono essere "Distrattori RIPAM":
+- Plausibili ma tecnicamente inesatte.
+- Simili alla corretta ma con termini, scadenze o autorità cambiati (es. "30 giorni" vs "60 giorni", "Prefetto" vs "Questore").
+- Devono mettere in dubbio il candidato.
+
+CONTESTO GIOCO:
+- Tutor: {tutor} | Stage: {stage}
+
 {general_rules}
 
-ISTRUZIONI SPECIFICHE MATERIA:
-{subject_instructions}
+ISTRUZIONI MATERIA ({subject}):
+{_read_text(instr_path)}
 
 {fewshot_block}
 
-OUTPUT OBBLIGATORIO:
-- Produci un JSON conforme allo schema.
-- Compila SEMPRE almeno:
-  tutor, materia, tipo, domanda, opzioni(A-D), corretta (se standard), spiegazione
-- Se tipo="situazionale": includi efficacia per A-D (efficace/neutra/inefficace)
-- Aggiungi anche:
-  tags: lista breve di keyword VISIVE per SD (pose/outfit/mood). NO parole astratte o legali.
-  visual: descrizione concreta e “SD-friendly” (no emozioni vaghe, no narrativa)
-
-SCHEMA JSON:
+OUTPUT RICHIESTO (SOLO JSON):
 {schema_text}
 """.strip()
 
