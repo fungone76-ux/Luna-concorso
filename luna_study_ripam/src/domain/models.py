@@ -1,16 +1,23 @@
+# src/domain/models.py
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-# Alias per chiarezza
 TutorName = str
-Outcome = str  # "corretta", "errata", "omessa"
+Outcome = str
 
 
 @dataclass
 class HistoryItem:
-    """Registra l'esito di una singola risposta."""
     tutor: str
     outcome: str
+
+
+@dataclass
+class LessonRecord:
+    """Memorizza il risultato di una lezione completa."""
+    topic: str
+    tutor: str
+    score: int
 
 
 @dataclass
@@ -24,18 +31,22 @@ class Question:
     tipo: str = "standard"
     tags: List[str] = field(default_factory=list)
     visual: str = ""
-    # Campo opzionale per l'interfaccia, non sempre presente nel JSON puro
     spiegazione_breve: str = ""
 
 
 @dataclass
 class SessionState:
-    """Lo stato globale della partita."""
-    # Mappa Tutor -> Punti (es. {"Maria": 12})
     progress: Dict[TutorName, int] = field(default_factory=dict)
-
-    # Mappa Tutor -> Stage (es. {"Maria": 2})
     stage: Dict[TutorName, int] = field(default_factory=dict)
-
-    # Lista degli ultimi eventi (es. per sapere se l'ultima è stata errata)
     history: List[HistoryItem] = field(default_factory=list)
+
+    # MASTERCLASS STATE
+    current_topic: str = ""
+    current_tutor: str = ""
+    quiz_counter: int = 0
+    quiz_score: int = 0
+    quiz_results: List[str] = field(default_factory=list)
+    quiz_asked_questions: List[str] = field(default_factory=list)
+
+    # NUOVO: Registro delle lezioni completate
+    completed_lessons: List[LessonRecord] = field(default_factory=list)

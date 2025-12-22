@@ -10,10 +10,8 @@ import sys
 import textwrap
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import customtkinter as ctk
 from PIL import Image, ImageTk
-
 from src.ai.gemini_client import GeminiClient, GeminiConfig
 from src.domain.models import SessionState, Question
 from src.engine.session_engine import SessionEngine
@@ -30,7 +28,6 @@ class ImagePopup(ctk.CTkToplevel):
         super().__init__(*args, **kwargs)
         self.title("Visualizzatore Immagine")
         self.geometry("900x900")
-        self.lift()
         self.focus_force()
         try:
             self.original_image = Image.open(image_path)
@@ -43,9 +40,11 @@ class ImagePopup(ctk.CTkToplevel):
             self.canvas.bind("<ButtonPress-1>", self.move_from)
             self.canvas.bind("<B1-Motion>", self.move_to)
             self.canvas.bind("<MouseWheel>", self.zoom)
+            self.canvas.bind("<Button-4>", self.zoom_linux)
+            self.canvas.bind("<Button-5>", self.zoom_linux)
             self.update_scrollregion()
-        except Exception as e:
-            print(f"Errore popup: {e}")
+        except:
+            pass
 
     def move_from(self, event):
         self.canvas.scan_mark(event.x, event.y)
@@ -54,17 +53,17 @@ class ImagePopup(ctk.CTkToplevel):
         self.canvas.scan_dragto(event.x, event.y, gain=1)
 
     def zoom(self, event):
-        if event.num == 5 or event.delta < 0:
-            scale_factor = 0.9
-        else:
-            scale_factor = 1.1
-        new_scale = self.current_scale * scale_factor
-        if 0.1 < new_scale < 5.0:
-            self.current_scale = new_scale
-            new_w = int(self.im_width * self.current_scale)
-            new_h = int(self.im_height * self.current_scale)
-            resized = self.original_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
-            self.tk_image = ImageTk.PhotoImage(resized)
+        self._do_zoom(1.1 if event.delta > 0 else 0.9)
+
+    def zoom_linux(self, event):
+        self._do_zoom(1.1 if event.num == 4 else 0.9)
+
+    def _do_zoom(self, f):
+        s = self.current_scale * f
+        if 0.1 < s < 5.0:
+            self.current_scale = s
+            w, h = int(self.im_width * s), int(self.im_height * s)
+            self.tk_image = ImageTk.PhotoImage(self.original_image.resize((w, h), Image.Resampling.LANCZOS))
             self.canvas.itemconfig(self.image_id, image=self.tk_image)
             self.update_scrollregion()
 
@@ -82,24 +81,22 @@ class LunaGuiApp(ctk.CTk):
         self.current_question: Optional[Question] = None
         self.last_image_path: Optional[str] = None
         self.can_answer = False
+        self.step = "start"
 
-        # Variabili Esame
-        self.exam_session: Optional[ExamSession] = None
+        self.exam_session = None
         self.is_exam_mode = False
         self.exam_timer_id = None
 
-        self.title("Luna Study - RIPAM Edition")
-        self.geometry("600x1000")
+        self.title("Luna Study - Masterclass Desktop")
+        self.geometry("1200x850")
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0)  # Header
-        self.grid_rowconfigure(1, weight=1)  # Main Content
-        self.grid_rowconfigure(2, weight=0)  # Chat/Exam Text
-        self.grid_rowconfigure(3, weight=0)  # Options
-        self.grid_rowconfigure(4, weight=0)  # Input/Nav
+        self.grid_columnconfigure(0, weight=0, minsize=450)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=1)
 
         self._setup_ui()
-        self.after(100, self.start_turn)
+        self.after(100, self.start_new_block)
 
     def _init_engine(self):
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -110,331 +107,292 @@ class LunaGuiApp(ctk.CTk):
 
     def _setup_ui(self):
         # 1. HEADER
-        self.header_frame = ctk.CTkFrame(self, height=50, corner_radius=0, fg_color="#202c33")
-        self.header_frame.grid(row=0, column=0, sticky="ew")
+        self.header_frame = ctk.CTkFrame(self, height=40, corner_radius=0, fg_color="#1f2937")
+        self.header_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
 
-        self.lbl_tutor_info = ctk.CTkLabel(self.header_frame, text="Luna Bot", font=("Helvetica", 16, "bold"),
+        self.lbl_tutor_info = ctk.CTkLabel(self.header_frame, text="Luna Tutor System", font=("Helvetica", 14, "bold"),
                                            text_color="white")
-        self.lbl_tutor_info.pack(side="left", padx=15, pady=10)
+        self.lbl_tutor_info.pack(side="left", padx=20, pady=5)
 
-        # Bottoni
-        self.btn_exam = ctk.CTkButton(self.header_frame, text="SIMULAZIONE ESAME", width=120, height=30,
-                                      fg_color="#b91c1c", hover_color="#991b1b", command=self.start_exam_mode)
-        self.btn_exam.pack(side="right", padx=10, pady=10)
+        self.btn_exam = ctk.CTkButton(self.header_frame, text="MODALITÀ ESAME", width=120, height=28,
+                                      fg_color="#b91c1c", command=self.start_exam_mode)
+        self.btn_exam.pack(side="right", padx=10)
 
-        self.btn_save = ctk.CTkButton(self.header_frame, text="💾", width=30, height=30, fg_color="#37404a",
+        self.btn_save = ctk.CTkButton(self.header_frame, text="💾 SALVA", width=80, height=28, fg_color="#374151",
                                       command=self.save_game)
-        self.btn_save.pack(side="right", padx=5, pady=10)
+        self.btn_save.pack(side="right", padx=5)
 
-        self.btn_load = ctk.CTkButton(self.header_frame, text="📂", width=30, height=30, fg_color="#37404a",
+        self.btn_load = ctk.CTkButton(self.header_frame, text="📂 CARICA", width=80, height=28, fg_color="#374151",
                                       command=self.load_game)
-        self.btn_load.pack(side="right", padx=5, pady=10)
+        self.btn_load.pack(side="right", padx=5)
 
-        self.lbl_stats = ctk.CTkLabel(self.header_frame, text="-- Statistiche --", font=("Helvetica", 12),
-                                      text_color="#aebac1")
-        self.lbl_stats.pack(side="right", padx=10, pady=10)
+        # 2. LEFT PANEL
+        self.left_panel = ctk.CTkFrame(self, fg_color="#000000", corner_radius=0)
+        self.left_panel.grid(row=1, column=0, sticky="nsew")
 
-        # 2. IMAGE AREA
-        self.image_frame = ctk.CTkFrame(self, fg_color="#0b141a", corner_radius=0)
-        self.image_frame.grid(row=1, column=0, sticky="nsew")
-
-        self.image_label = ctk.CTkLabel(self.image_frame, text="", cursor="hand2")
+        self.image_label = ctk.CTkLabel(self.left_panel, text="", cursor="hand2")
         self.image_label.place(relx=0.5, rely=0.5, anchor="center")
         self.image_label.bind("<Button-1>", self.open_image_viewer)
 
-        self.lbl_timer = ctk.CTkLabel(self.image_frame, text="", font=("Courier", 24, "bold"), text_color="#ef4444")
-        self.loading_label = ctk.CTkLabel(self.image_frame, text="", text_color="#00a884",
-                                          font=("Helvetica", 14, "bold"))
-        self.loading_label.place(relx=0.5, rely=0.45, anchor="center")
-        self.progress_bar = ctk.CTkProgressBar(self.image_frame, width=200, mode="indeterminate",
-                                               progress_color="#00a884")
+        self.loading_label = ctk.CTkLabel(self.left_panel, text="In attesa...", text_color="#10b981",
+                                          font=("Helvetica", 14))
+        self.loading_label.place(relx=0.5, rely=0.9, anchor="center")
+        self.progress_bar = ctk.CTkProgressBar(self.left_panel, width=300, mode="indeterminate",
+                                               progress_color="#10b981")
 
-        # 3. CHAT BUBBLE
-        self.chat_frame = ctk.CTkFrame(self, fg_color="#0b141a", corner_radius=0)
-        self.chat_frame.grid(row=2, column=0, sticky="ew")
-        self.bubble_frame = ctk.CTkFrame(self.chat_frame, fg_color="#202c33", corner_radius=15)
-        self.bubble_frame.pack(fill="x", padx=15, pady=(10, 5))
-        self.question_text = ctk.CTkLabel(self.bubble_frame, text="Caricamento...", font=("Helvetica", 15),
-                                          wraplength=540, justify="left", anchor="w", text_color="#e9edef")
-        self.question_text.pack(padx=15, pady=15, fill="x")
+        # 3. RIGHT PANEL
+        self.right_panel = ctk.CTkFrame(self, fg_color="#111827", corner_radius=0)
+        self.right_panel.grid(row=1, column=1, sticky="nsew")
+        self.right_panel.grid_rowconfigure(0, weight=1)
+        self.right_panel.grid_rowconfigure(1, weight=0)
+        self.right_panel.grid_rowconfigure(2, weight=0)
+        self.right_panel.grid_columnconfigure(0, weight=1)
 
-        # 4. OPTIONS
-        self.options_frame = ctk.CTkFrame(self, fg_color="#0b141a", corner_radius=0)
-        self.options_frame.grid(row=3, column=0, sticky="ew")
+        self.text_frame = ctk.CTkFrame(self.right_panel, fg_color="transparent")
+        self.text_frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+
+        self.question_text = ctk.CTkTextbox(self.text_frame, font=("Helvetica", 16), text_color="#e5e7eb", wrap="word",
+                                            fg_color="#1f2937", corner_radius=10)
+        self.question_text.pack(fill="both", expand=True)
+        self.question_text.configure(state="disabled")
+
+        self.options_frame = ctk.CTkFrame(self.right_panel, fg_color="transparent")
+        self.options_frame.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 20))
+
         self.btn_options = {}
-        for letter in ["A", "B", "C", "D"]:
-            btn = ctk.CTkButton(self.options_frame, text=letter, font=("Helvetica", 14), fg_color="#2a3942",
-                                hover_color="#3a4a55", height=55, corner_radius=10, anchor="w",
-                                command=lambda l=letter: self.submit_answer(l))
-            self.btn_options[letter] = btn
-
-        self.btn_next = ctk.CTkButton(self.options_frame, text="Prossima Domanda ➤", font=("Helvetica", 16, "bold"),
-                                      fg_color="#00a884", height=50, corner_radius=10, command=self.start_turn)
-        self.btn_skip = ctk.CTkButton(self.options_frame, text="SALTA (Omessa) ⏭️", font=("Helvetica", 14),
-                                      fg_color="#eab308", hover_color="#ca8a04", height=40, corner_radius=10,
-                                      command=lambda: self.submit_answer(None))
-
-        # 5. INPUT
-        self.input_frame = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color="#202c33")
-        self.input_frame.grid(row=4, column=0, sticky="ew")
-        self.input_frame.grid_columnconfigure(0, weight=1)
-        self.entry_msg = ctk.CTkEntry(self.input_frame, placeholder_text="Scrivi...", fg_color="#2a3942",
-                                      border_width=0, text_color="white", height=40, corner_radius=20)
-        self.entry_msg.grid(row=0, column=0, padx=(15, 10), pady=10, sticky="ew")
-        self.entry_msg.bind("<Return>", lambda event: self.send_message())
-        self.btn_send = ctk.CTkButton(self.input_frame, text="➤", width=40, height=40, corner_radius=20,
-                                      fg_color="#00a884", command=self.send_message)
-        self.btn_send.grid(row=0, column=1, padx=(0, 15), pady=10)
-
-    def _update_stats_display(self):
-        if not self.current_question or self.is_exam_mode: return
-        tutor = self.current_question.tutor
-        total, correct = 0, 0
-        for h in self.session_state.history:
-            if h.tutor == tutor:
-                total += 1
-                if h.outcome == "corretta": correct += 1
-        pct = int((correct / total) * 100) if total > 0 else 0
-        stage = self.session_state.stage.get(tutor, 1)
-        points = self.session_state.progress.get(tutor, 0)
-        self.lbl_stats.configure(text=f"{tutor}: {correct}/{total} ({pct}%) | Stage: {stage} | Punti: {points}")
-
-    # --- MODALITA' ESAME ---
-    def start_exam_mode(self):
-        stop()
-        self.is_exam_mode = True
-        self.exam_session = self.exam_engine.start_exam()
-        self.image_label.configure(image="")
-        self.image_label.image = None
-        self.lbl_stats.configure(text="MODALITÀ ESAME")
-        self.btn_exam.configure(state="disabled", text="ESAME IN CORSO")
-        self.input_frame.grid_forget()
-        self.lbl_timer.place(relx=0.5, rely=0.1, anchor="center")
-        self._update_timer()
-        self.btn_skip.pack(fill="x", padx=20, pady=(0, 10))
-        self.next_exam_question()
-
-    def next_exam_question(self):
-        self.loading_label.configure(text="Caricamento quesito ministeriale...")
-        self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
-        self.progress_bar.start()
-        self.set_ui_state("disabled")
-        threading.Thread(target=self._exam_fetch_thread, daemon=True).start()
-
-    def _exam_fetch_thread(self):
-        q = self.exam_engine.get_next_question(self.exam_session)
-        self.after(0, lambda: self._display_exam_question(q))
-
-    def _display_exam_question(self, q: Question):
-        self.progress_bar.stop()
-        self.progress_bar.place_forget()
-        self.loading_label.configure(text="")
-        if not q:
-            self._end_exam()
-            return
-        self.current_question = q
-        self.can_answer = True
-        idx = self.exam_session.current_index + 1
-        total = len(self.exam_session.subject_roadmap)
-        self.lbl_tutor_info.configure(text=f"Domanda {idx}/{total}")
-        self.question_text.configure(text=f"[{q.materia}]\n\n{q.domanda}")
-        for letter in ["A", "B", "C", "D"]:
-            raw = q.opzioni.get(letter, "---")
-            wrap = "\n".join(textwrap.wrap(raw, width=55))
-            btn = self.btn_options[letter]
-            btn.configure(text=f"{letter}) {wrap}", fg_color="#2a3942", state="normal")
-            btn.pack(fill="x", padx=20, pady=4)
-        self.btn_skip.configure(state="normal")
-
-    def _update_timer(self):
-        if not self.is_exam_mode or not self.exam_session: return
-        elapsed = time.time() - self.exam_session.start_time
-        remaining = self.exam_session.duration_seconds - elapsed
-        if remaining <= 0:
-            self._end_exam()
-            return
-        mins, secs = divmod(int(remaining), 60)
-        self.lbl_timer.configure(text=f"{mins:02d}:{secs:02d}")
-        self.exam_timer_id = self.after(1000, self._update_timer)
-
-    def _end_exam(self):
-        if self.exam_timer_id: self.after_cancel(self.exam_timer_id)
-        self.is_exam_mode = False
-        score, passed, report = self.exam_engine.calculate_result(self.exam_session)
-        self.question_text.configure(text=report)
-        for btn in self.btn_options.values(): btn.pack_forget()
-        self.btn_skip.pack_forget()
-        self.lbl_timer.place_forget()
-        self.btn_exam.configure(state="normal", text="SIMULAZIONE ESAME")
-        self.btn_next.pack(fill="x", padx=20, pady=10)
-        self.btn_next.configure(text="Torna al Gioco", command=self.restore_game_mode)
-
-    def restore_game_mode(self):
-        self.is_exam_mode = False
-        self.input_frame.grid(row=4, column=0, sticky="ew")
-        self.btn_next.configure(text="Prossima Domanda ➤", command=self.start_turn)
-        self.start_turn()
-
-    # --- LOGICA GIOCO ---
-    def start_turn(self):
-        stop()
-        self.is_exam_mode = False
-        self.set_ui_state("disabled")
-        self.btn_next.pack_forget()
-        self.btn_skip.pack_forget()
-        self.lbl_timer.place_forget()
-        self.loading_label.configure(text="Generazione domanda con Gemini...")
-        self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
-        self.progress_bar.start()
-        threading.Thread(target=self._generate_question_thread, daemon=True).start()
-
-    def _generate_question_thread(self):
-        try:
-            q = self.engine.start_next_question(self.session_state)
-            self.after(0, lambda: self._display_question(q))
-        except Exception as e:
-            print(f"Errore generazione: {e}")
-
-    def _display_question(self, q: Question):
-        self.progress_bar.stop()
-        self.progress_bar.place_forget()
-        self.loading_label.configure(text="")
-        self.current_question = q
-        self.can_answer = True
-        self.question_text.configure(text=q.domanda)
-        for letter in ["A", "B", "C", "D"]:
-            raw = q.opzioni.get(letter, "---")
-            wrap = "\n".join(textwrap.wrap(raw, width=55))
-            btn = self.btn_options[letter]
-            btn.configure(text=f"{letter}) {wrap}", fg_color="#2a3942", state="normal")
-            btn.pack(fill="x", padx=20, pady=4)
-        tutor = q.tutor
-        self.lbl_tutor_info.configure(text=f"{tutor} (Online)")
-        self._update_stats_display()
-        self.entry_msg.configure(state="normal")
-        self.btn_send.configure(state="normal")
-        self.entry_msg.delete(0, "end")
-        self.entry_msg.focus()
-
-        text_to_read = f"Domanda. {q.domanda}. "
         for l in ["A", "B", "C", "D"]:
-            if q.opzioni.get(l): text_to_read += f"Risposta {l}. {q.opzioni[l]}. "
+            self.btn_options[l] = ctk.CTkButton(self.options_frame, text=l, height=90, anchor="w",
+                                                font=("Helvetica", 14), fg_color="#374151", hover_color="#4b5563",
+                                                command=lambda x=l: self.submit_answer(x))
 
-        # --- FIX: Passa il tutor al narratore ---
-        speak(text_to_read, tutor=q.tutor)
+        self.btn_next = ctk.CTkButton(self.options_frame, text="AVANTI ➤", height=50,
+                                      font=("Helvetica", 15, "bold"), fg_color="#059669",
+                                      command=self.next_step_action)
 
-    def submit_answer(self, choice: str):
-        if not self.can_answer: return
-        stop()
-        self.can_answer = False
-        if self.is_exam_mode:
-            self.exam_engine.submit_answer(self.exam_session, choice)
-            self.exam_session.current_index += 1
-            self.next_exam_question()
-        else:
-            self.loading_label.configure(text="Analisi risposta...")
-            self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
-            self.progress_bar.start()
-            threading.Thread(target=self._process_game_answer_thread, args=(choice,), daemon=True).start()
+        self.input_frame = ctk.CTkFrame(self.right_panel, height=60, fg_color="#1f2937", corner_radius=0)
+        self.input_frame.grid(row=2, column=0, sticky="ew")
+        self.input_frame.grid_columnconfigure(0, weight=1)
 
-    def _process_game_answer_thread(self, choice):
-        # 1. Calcola esito
-        res = self.engine.apply_answer(self.session_state, self.current_question, choice)
-        image_path = self.engine.last_image_path
+        self.entry_msg = ctk.CTkEntry(self.input_frame, placeholder_text="Fai una domanda al Tutor...", height=40,
+                                      fg_color="#374151", border_width=0, text_color="white")
+        self.entry_msg.grid(row=0, column=0, padx=(20, 10), pady=10, sticky="ew")
+        self.entry_msg.bind("<Return>", lambda e: self.send_message())
 
-        # 2. Genera reazione "HOT" del tutor
-        feedback_text = self.engine.get_answer_feedback(self.current_question, res.outcome, res.new_stage)
+        self.btn_send = ctk.CTkButton(self.input_frame, text="INVIA", width=80, height=40, fg_color="#059669",
+                                      command=self.send_message)
+        self.btn_send.grid(row=0, column=1, padx=(0, 20), pady=10)
 
-        self.after(0, lambda: self._show_result(res, image_path, choice, feedback_text))
-
-    def _show_result(self, res, image_path, user_choice, feedback_text):
-        self.progress_bar.stop()
-        self.progress_bar.place_forget()
-        self.loading_label.configure(text="")
-        self._update_stats_display()
-        self.last_image_path = image_path
-        for btn in self.btn_options.values(): btn.pack_forget()
-
-        icon = "✅" if res.outcome == "corretta" else "❌"
-        spieg = getattr(self.current_question, "spiegazione_breve", "")
-
-        # Mostra la reazione del tutor PRIMA della spiegazione tecnica
-        fb = f"{feedback_text}\n\n{icon} Risposta {res.outcome.upper()}!\nCorretta: {self.current_question.corretta}\n\n{spieg}"
-        self.question_text.configure(text=fb)
-
-        self.btn_next.pack(fill="x", padx=20, pady=10)
-
-        if image_path and os.path.exists(image_path):
-            self._load_image_to_ui(image_path)
-        else:
-            self.loading_label.configure(text="Nessuna immagine generata")
-
-        self.entry_msg.configure(state="normal")
-        self.btn_send.configure(state="normal")
-        self.entry_msg.focus()
-
-        # --- FIX: Passa il tutor al narratore ---
-        speak(f"{feedback_text}. {spieg}", tutor=self.current_question.tutor)
+    def set_text(self, content):
+        self.question_text.configure(state="normal")
+        self.question_text.delete("0.0", "end")
+        self.question_text.insert("0.0", content)
+        self.question_text.configure(state="disabled")
 
     def save_game(self):
-        file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
-        if file_path: self.engine.save_session_to_file(self.session_state, file_path)
+        file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Salvataggio Luna", "*.json")])
+        if file_path:
+            self.engine.save_session_to_file(self.session_state, file_path)
+            messagebox.showinfo("Salvataggio", "Partita salvata!")
 
     def load_game(self):
-        file_path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        file_path = filedialog.askopenfilename(filetypes=[("Salvataggio Luna", "*.json")])
         if file_path:
             ns = self.engine.load_session_from_file(file_path)
             if ns:
                 self.session_state = ns
-                self.start_turn()
+                self.show_summary_screen()
+
+    def show_summary_screen(self):
+        stop()
+        self.step = "summary"
+        self.set_ui_ready()
+
+        for b in self.btn_options.values(): b.pack_forget()
+        self.btn_next.pack_forget()
+
+        lessons = self.session_state.completed_lessons
+        if not lessons:
+            summary = "Nessuna lezione completata finora."
+        else:
+            summary = "📜 REGISTRO LEZIONI COMPLETATE:\n\n"
+            for l in lessons:
+                icon = "✅" if l.score >= 8 else "❌"
+                summary += f"{icon} {l.topic} (Tutor: {l.tutor}) - Voto: {l.score}/10\n"
+                if l.score >= 8:
+                    summary += "   (Superato - Non verrà ripetuto)\n\n"
+                else:
+                    summary += "   (Insufficiente - Da ripassare)\n\n"
+
+        self.lbl_tutor_info.configure(text="RIEPILOGO CARRIERA")
+        self.set_text(summary)
+
+        self.btn_next.configure(text="INIZIA NUOVA LEZIONE (Argomenti Nuovi) ➤", command=self.start_new_block)
+        self.btn_next.pack(fill="x", pady=20)
+
+    def start_new_block(self):
+        stop()
+        self.step = "lesson"
+        self.set_ui_loading("Generazione Lezione & Immagine...")
+        threading.Thread(target=self._gen_lesson_thread, daemon=True).start()
+
+    def _gen_lesson_thread(self):
+        text, img_path = self.engine.start_new_lesson_block(self.session_state)
+        self.after(0, lambda: self._show_lesson(text, img_path))
+
+    def _show_lesson(self, text, img_path):
+        self.set_ui_ready()
+        tutor = self.session_state.current_tutor
+        topic = self.session_state.current_topic
+
+        self.lbl_tutor_info.configure(text=f"DOCENTE: {tutor} | ARGOMENTO: {topic}")
+        self.set_text(f"🎓 LEZIONE MAGISTRALE\n\n{text}")
+        if img_path: self._load_image(img_path)
+
+        for b in self.btn_options.values(): b.pack_forget()
+        self.btn_next.configure(text="TUTTO CHIARO - INIZIA QUIZ (10 Domande) ➤", command=self.start_quiz_loop)
+        self.btn_next.pack(fill="x", pady=5)
+        speak(f"Lezione su {topic}. {text}", tutor=tutor)
+
+    def start_quiz_loop(self):
+        self.step = "quiz"
+        self.next_quiz_question()
+
+    def next_quiz_question(self):
+        stop()
+        if self.session_state.quiz_counter >= 10:
+            self.show_final_report()
+            return
+        idx = self.session_state.quiz_counter + 1
+        self.set_ui_loading(f"Caricamento Quiz {idx}/10...")
+        threading.Thread(target=self._gen_quiz_thread, daemon=True).start()
+
+    def _gen_quiz_thread(self):
+        q = self.engine.get_next_quiz_question(self.session_state)
+        self.after(0, lambda: self._show_quiz_question(q))
+
+    def _show_quiz_question(self, q):
+        self.set_ui_ready()
+        self.current_question = q
+        self.can_answer = True
+        idx = self.session_state.quiz_counter + 1
+        score = self.session_state.quiz_score
+        self.lbl_tutor_info.configure(text=f"QUIZ {idx}/10 | Punteggio: {score} | Tutor: {q.tutor}")
+        self.set_text(f"❓ DOMANDA\n\n{q.domanda}")
+        self.btn_next.pack_forget()
+        for l in ["A", "B", "C", "D"]:
+            raw = q.opzioni.get(l, "-")
+            wrap = "\n".join(textwrap.wrap(raw, width=45))
+            self.btn_options[l].configure(text=f"{l}) {wrap}", state="normal", fg_color="#374151")
+            self.btn_options[l].pack(fill="x", pady=5)
+        speak(q.domanda, tutor=q.tutor)
+
+    def submit_answer(self, choice):
+        if not self.can_answer: return
+        stop()
+        self.can_answer = False
+        self.set_ui_loading("Verifica...")
+        threading.Thread(target=self._process_answer_thread, args=(choice,), daemon=True).start()
+
+    def _process_answer_thread(self, choice):
+        res = self.engine.apply_answer(self.session_state, self.current_question, choice)
+        fb = self.engine.get_answer_feedback(self.current_question, res.outcome, res.new_stage)
+        img = self.engine.last_image_path
+        self.after(0, lambda: self._show_feedback(res, fb, img))
+
+    def _show_feedback(self, res, fb, img):
+        self.set_ui_ready()
+        for b in self.btn_options.values(): b.pack_forget()
+        icon = "✅" if res.outcome == "corretta" else "❌"
+        spieg = getattr(self.current_question, "spiegazione_breve", "")
+        corr_clean = self.current_question.corretta.strip().upper()
+        if len(corr_clean) > 1: corr_clean = corr_clean[0]
+        full_text = f"{fb}\n\n{icon} RISPOSTA {res.outcome.upper()}\n\n✅ Corretta: {corr_clean}\n\n📖 Spiegazione:\n{spieg}"
+        self.set_text(full_text)
+        if img: self._load_image(img)
+        speak(f"{fb}. {spieg}", tutor=self.current_question.tutor)
+        lbl = "PROSSIMA DOMANDA ➤" if self.session_state.quiz_counter < 10 else "VAI ALLA PAGELLA ➤"
+        self.btn_next.configure(text=lbl, command=self.next_quiz_question)
+        self.btn_next.pack(fill="x", pady=5)
+
+    def show_final_report(self):
+        self.step = "report"
+        self.set_ui_loading("Elaborazione Pagella...")
+        threading.Thread(target=self._gen_report_thread, daemon=True).start()
+
+    def _gen_report_thread(self):
+        rep = self.engine.generate_final_report(self.session_state)
+        self.after(0, lambda: self._display_report(rep))
+
+    def _display_report(self, text):
+        self.set_ui_ready()
+        score = self.session_state.quiz_score
+        self.set_text(f"📊 PAGELLA FINALE\n\nPunteggio Totale: {score}/10\n\n{text}")
+        self.btn_next.configure(text="NUOVA LEZIONE (Argomento Casuale) ➤", command=self.start_new_block)
+        self.btn_next.pack(fill="x", pady=5)
+        tutor = self.session_state.current_tutor
+        speak(f"Hai fatto {score} su 10. {text}", tutor=tutor)
+
+    def set_ui_loading(self, text):
+        self.loading_label.configure(text=text)
+        self.progress_bar.place(relx=0.5, rely=0.5, anchor="center")
+        self.progress_bar.start()
+
+    def set_ui_ready(self):
+        self.progress_bar.stop()
+        self.progress_bar.place_forget()
+        self.loading_label.configure(text="")
+
+    def next_step_action(self):
+        pass
 
     def send_message(self):
-        if not self.current_question: return
-        text = self.entry_msg.get().strip()
-        if not text: return
+        txt = self.entry_msg.get()
+        if not txt: return
         self.entry_msg.delete(0, "end")
-        upper = text.upper()
-        if self.can_answer and upper in ["A", "B", "C", "D"]:
-            self.submit_answer(upper)
-        else:
-            cur = self.question_text.cget("text")
-            self.question_text.configure(text=f"{cur}\n\nTu: {text}")
-            threading.Thread(target=self._chat_thread, args=(text,), daemon=True).start()
+        self.question_text.configure(state="normal")
+        self.question_text.insert("end", f"\n\n👤 TU: {txt}\n")
+        self.question_text.see("end")
+        self.question_text.configure(state="disabled")
+        threading.Thread(target=self._chat_thread, args=(txt,), daemon=True).start()
 
-    def _chat_thread(self, text):
-        has_answered = not self.can_answer
-        tutor = self.current_question.tutor
+    def _chat_thread(self, txt):
+        tutor = self.session_state.current_tutor or "Luna"
         stage = self.session_state.stage.get(tutor, 1)
-        # Passiamo lo stage per avere la risposta "in tono"
-        resp = self.engine.get_tutor_response(self.current_question, text, has_answered, stage)
-        self.after(0, lambda: self._update_chat(resp))
+        q = type('', (), {})()
+        q.tutor = tutor
+        q.domanda = "Lesson Context"
+        resp = self.engine.get_tutor_response(q, txt, False, stage)
+        self.after(0, lambda: self._update_chat(resp, tutor))
 
-    def _update_chat(self, text):
-        cur = self.question_text.cget("text")
-        self.question_text.configure(text=f"{cur}\n\n{self.current_question.tutor}: {text}")
-        # --- FIX: Passa il tutor al narratore ---
-        speak(text, tutor=self.current_question.tutor)
+    def _update_chat(self, txt, tutor):
+        self.question_text.configure(state="normal")
+        self.question_text.insert("end", f"\n👩‍🏫 {tutor}: {txt}\n")
+        self.question_text.see("end")
+        self.question_text.configure(state="disabled")
+        speak(txt, tutor=tutor)
 
-    def _load_image_to_ui(self, path):
+    def _load_image(self, path):
+        # FIX: Aggiorna self.last_image_path così il popup funziona!
+        self.last_image_path = path
         try:
             pil = Image.open(path)
-            w = self.image_frame.winfo_width() or 500
-            h = self.image_frame.winfo_height() or 500
-            r = min(w / pil.width, h / pil.height)
-            tk_img = ImageTk.PhotoImage(pil.resize((int(pil.width * r), int(pil.height * r)), Image.Resampling.LANCZOS))
-            self.image_label.configure(image=tk_img)
-            self.image_label.image = tk_img
-        except:
-            pass
+            target_w = 450
+            ratio = target_w / pil.width
+            target_h = int(pil.height * ratio)
+            if target_h > 800:
+                target_h = 800
+                target_w = int(pil.width * (800 / pil.height))
+            ctk_img = ctk.CTkImage(light_image=pil, dark_image=pil, size=(target_w, target_h))
+            self.image_label.configure(image=ctk_img)
+            self.image_label.image = ctk_img
+        except Exception as e:
+            print(f"Errore caricamento immagine: {e}")
 
-    def open_image_viewer(self, e=None):
+    def open_image_viewer(self, e):
         if self.last_image_path: ImagePopup(self.last_image_path, self)
 
-    def set_ui_state(self, state):
-        for btn in self.btn_options.values(): btn.configure(state=state)
-        self.btn_skip.configure(state=state)
-        self.entry_msg.configure(state=state)
-        self.btn_send.configure(state=state)
+    def start_exam_mode(self):
+        pass
 
     def on_close(self):
         shutdown_narrator()

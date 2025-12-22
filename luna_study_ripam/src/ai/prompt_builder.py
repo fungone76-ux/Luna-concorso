@@ -76,7 +76,8 @@ def build_question_prompt(
 ) -> str:
     rng = rng or random.Random()
 
-    system_rules = _read_text(os.path.join(project_root, "prompts", "system_prompt.txt"))
+    # Usa il prompt "Solo Quiz" perché la lezione è già stata fatta a parte
+    system_rules = _read_text(os.path.join(project_root, "prompts", "ripam_quiz_only.txt"))
     general_rules = _read_text(os.path.join(project_root, "prompts", "question_instructions", "_general_rules.txt"))
     instr_path = os.path.join(project_root, "prompts", "question_instructions",
                               subject_to_instruction_filename(subject))

@@ -2,10 +2,11 @@
 import json
 import os
 import random
-from typing import Optional
+import re
+from typing import Optional, Tuple
 import uuid
 
-from src.domain.models import SessionState, Question, HistoryItem
+from src.domain.models import SessionState, Question, HistoryItem, LessonRecord
 from src.ai.gemini_client import GeminiClient
 from src.ai.prompt_builder import build_question_prompt, PromptBuildConfig
 from src.visuals.prompt_compiler import compile_sd_prompt
@@ -27,140 +28,232 @@ class SessionEngine:
         self.last_image_path: Optional[str] = None
 
     def _get_stage_mood(self, stage: int) -> str:
-        """Returns the tone instruction based on stage (1-5)."""
         moods = {
-            1: "TONE: Professional, cold, institutional. No intimacy.",
-            2: "TONE: Flirty, teasing, warm voice. Start hinting at desire.",
-            3: "TONE: Seductive, provocative. Use double entendres.",
-            4: "TONE: VERY HOT, 'Dirty Talk'. Be vulgar or extremely explicit about desire.",
-            5: "TONE: EXTREME, NSFW/PORNOGRAPHIC. No filters. If praising, do it with total submission/ecstasy. If punishing, destroy him verbally."
+            1: "TONE: Professional, cold, institutional.",
+            2: "TONE: Flirty, teasing, warm voice.",
+            3: "TONE: Seductive, provocative.",
+            4: "TONE: VERY HOT, 'Dirty Talk'.",
+            5: "TONE: EXTREME, NSFW."
         }
         return moods.get(stage, moods[1])
 
-    def start_next_question(self, state: SessionState) -> Question:
-        recent = [h.tutor for h in state.history[-5:]]
-        subject = self.subject_picker.pick(recent_subjects=recent)
-        specific_topic = get_random_topic(subject)
+    # --- FASE 1: LEZIONE ---
+    def start_new_lesson_block(self, state: SessionState) -> Tuple[str, str]:
+        # ANTI-RIPETIZIONE: Escludi argomenti già fatti
+        done_topics = [l.topic for l in state.completed_lessons]
+        subject = self.subject_picker.pick(recent_subjects=done_topics)
 
         tutor = tutor_for_subject(subject)
-        stage = state.stage.get(tutor, 1)
-        last_out = state.history[-1].outcome if state.history else "neutro"
+        base_stage = state.stage.get(tutor, 1)
+
+        # Reset
+        state.current_topic = subject
+        state.current_tutor = tutor
+        state.quiz_counter = 0
+        state.quiz_score = 0
+        state.quiz_results = []
+        state.quiz_asked_questions = []
+
+        mood = self._get_stage_mood(base_stage)
+        prompt = f"""
+Sei {tutor}, un tutor esperto e pragmatico per il concorso 'Ministero della Cultura'.
+Argomento: "{subject}".
+{mood}
+
+OBIETTIVO:
+Fai una lezione discorsiva e coinvolgente su questo argomento (Stile Chat/Podcast).
+1. Sii chiaro, diretto e usa esempi pratici.
+2. Spiega le leggi fondamentali (es. L.241/90, Codice Urbani) se pertinenti.
+3. NON fare domande. Insegna e basta.
+4. Formattazione: usa spazi e qualche elenco per rendere il testo leggibile.
+
+Lingua: Italiano.
+"""
+        response = self.gemini.generate_content(prompt)
+
+        image_path = ""
+        if self.enable_sd:
+            try:
+                dummy_q = Question(
+                    domanda=f"Teaching {subject}", opzioni={}, corretta="", spiegazione="",
+                    tutor=tutor, materia=subject,
+                    tags=["holding a pointer", "pointing at whiteboard", "classroom background", "teaching", "glasses"],
+                    visual="medium shot, standing near a whiteboard, teaching gesture, confident look"
+                )
+                sd_prompt = compile_sd_prompt(self.project_root, tutor, base_stage, False, dummy_q)
+                filename = f"lesson_{uuid.uuid4().hex[:6]}.png"
+                out = os.path.join(self.project_root, "output_images", filename)
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                self.sd_client.generate_image(sd_prompt.prompt, sd_prompt.negative_prompt, out)
+                image_path = out
+                self.last_image_path = out
+            except Exception as e:
+                print(f"Errore generazione immagine lezione: {e}")
+
+        return response, image_path
+
+    # --- FASE 2: QUIZ ---
+    def get_next_quiz_question(self, state: SessionState) -> Question:
+        subject = state.current_topic
+        tutor = state.current_tutor
+        base_stage = state.stage.get(tutor, 1)
+
+        past_questions_txt = "\n- ".join(state.quiz_asked_questions[-6:])
+        avoid_instruction = ""
+        if past_questions_txt:
+            avoid_instruction = f"\n[CONSTRAINT] DO NOT ask about these concepts again: \n- {past_questions_txt}\nGenerate a question on a DIFFERENT aspect of '{subject}'."
 
         cfg = PromptBuildConfig(seed_per_prompt=3, strict_json_only=True)
+        max_retries = 3
 
-        prompt_text = build_question_prompt(
-            self.project_root, subject, tutor, stage, last_out, cfg,
-            specific_topic=specific_topic
+        for attempt in range(max_retries):
+            prompt_topic = f"{subject}. {avoid_instruction}"
+            prompt_text = build_question_prompt(
+                self.project_root, subject, tutor, base_stage, "neutro", cfg,
+                specific_topic=prompt_topic
+            )
+
+            resp = self.gemini.generate_content(prompt_text)
+            clean_json = resp.replace("```json", "").replace("```", "").strip()
+
+            try:
+                data = json.loads(clean_json)
+                if not data.get("domanda") or not data.get("opzioni"): raise ValueError("Dati vuoti")
+
+                valid_opts = [v for k, v in data["opzioni"].items() if v and str(v).strip() != "."]
+                if len(valid_opts) < 2: raise ValueError("Opzioni mancanti")
+
+                spieg = data.get("spiegazione_breve") or data.get("spiegazione", "...")
+                corr_raw = str(data.get("corretta", "A")).strip().upper()
+                if len(corr_raw) > 1: corr_raw = corr_raw[0]
+
+                return Question(
+                    domanda=data.get("domanda", ""),
+                    opzioni=data.get("opzioni", {}),
+                    corretta=corr_raw,
+                    spiegazione=spieg,
+                    tutor=tutor,
+                    materia=subject,
+                    tipo="standard",
+                    tags=data.get("tags", []),
+                    visual=data.get("visual", ""),
+                    spiegazione_breve=spieg
+                )
+            except Exception as e:
+                print(f"[ENGINE] Errore generazione quiz (Tentativo {attempt + 1}): {e}")
+                continue
+
+        return Question(
+            domanda="Errore tecnico generazione domanda. Procedi.",
+            opzioni={"A": "Avanti", "B": "Avanti", "C": "Avanti", "D": "Avanti"},
+            corretta="A", spiegazione="...", tutor=tutor, materia=subject
         )
 
-        resp = self.gemini.generate_content(prompt_text)
-        clean_json = resp.replace("```json", "").replace("```", "").strip()
-
-        try:
-            data = json.loads(clean_json)
-        except:
-            data = {"domanda": "Errore lettura dati. Riprova.", "opzioni": {"A": ".", "B": ".", "C": ".", "D": "."},
-                    "corretta": "A", "tutor": tutor, "materia": subject}
-
-        spieg = data.get("spiegazione_breve") or data.get("spiegazione", "...")
-
-        q = Question(
-            domanda=data.get("domanda", ""),
-            opzioni=data.get("opzioni", {}),
-            corretta=data.get("corretta", "A"),
-            spiegazione=spieg,
-            tutor=data.get("tutor", tutor),
-            materia=data.get("materia", subject),
-            tipo=data.get("tipo", "standard"),
-            tags=data.get("tags", []),
-            visual=data.get("visual", ""),
-            spiegazione_breve=spieg
-        )
-        return q
-
-    def get_tutor_response(self, question: Question, user_text: str, has_answered: bool, stage: int = 1) -> str:
-        """Free chat with tutor (stage influenced)."""
-        try:
-            path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
-            with open(path, "r", encoding="utf-8") as f:
-                profile = f.read().strip()
-        except:
-            profile = f"You are {question.tutor}."
-
-        mood_instr = self._get_stage_mood(stage)
-        ctx = "USER HAS ANSWERED" if has_answered else "USER HAS NOT ANSWERED YET"
-
-        prompt = f"""
-{profile}
-{mood_instr}
-
-CONTEXT: {question.domanda}
-GAME STATE: {ctx}
-USER SAYS: "{user_text}"
-
-INSTRUCTION:
-Reply to the user strictly following the TONE for stage {stage}.
-Be consistent with your personality but apply the required 'heat' level.
-Max 2 sentences.
-"""
-        return self.gemini.generate_content(prompt)
-
-    def get_answer_feedback(self, question: Question, outcome: str, stage: int) -> str:
-        """Generates hot feedback (praise/insult) after an answer."""
-        try:
-            path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
-            with open(path, "r", encoding="utf-8") as f:
-                profile = f.read().strip()
-        except:
-            profile = f"You are {question.tutor}."
-
-        mood_instr = self._get_stage_mood(stage)
-        esito_txt = "CORRECT" if outcome == "corretta" else "WRONG"
-
-        prompt = f"""
-{profile}
-{mood_instr}
-
-EVENT: The user just gave a {esito_txt} answer.
-
-INSTRUCTION:
-Generate an immediate reaction (1 sentence).
-- If CORRECT: Praise him, seduce him, or reward him verbally based on the stage tone.
-- If WRONG: Insult him, humiliate him, or punish him verbally based on the stage tone.
-Do not give technical explanations here, just the emotional/personal reaction.
-"""
-        return self.gemini.generate_content(prompt)
-
+    # --- CORE ---
     def apply_answer(self, state: SessionState, question: Question, user_choice: str):
-        is_correct = (user_choice.upper() == question.corretta.upper())
+        u_clean = user_choice.strip().upper()[0]
+        q_clean = question.corretta.strip().upper()
+        if len(q_clean) > 0: q_clean = q_clean[0]
+
+        is_correct = (u_clean == q_clean)
         outcome = "corretta" if is_correct else "errata"
 
+        state.quiz_counter += 1
+        if is_correct: state.quiz_score += 1
+        state.quiz_results.append(outcome)
+
+        if question.domanda and len(question.domanda) > 10:
+            state.quiz_asked_questions.append(question.domanda[:100] + "...")
+
         state.history.append(HistoryItem(tutor=question.tutor, outcome=outcome))
-        update = self.stage_manager.apply_outcome(state, question.tutor, outcome)
+
+        base_stage = state.stage.get(question.tutor, 1)
+        bonus_stage = state.quiz_score // 2
+        visual_stage = min(base_stage + bonus_stage, 5)
+
+        class UpdateResult:
+            def __init__(self, outcome, new_stage):
+                self.outcome = outcome
+                self.new_stage = new_stage
+                self.is_punish = (outcome == "errata")
+
+        update = UpdateResult(outcome, visual_stage)
 
         if self.enable_sd:
             try:
-                sd_prompt = compile_sd_prompt(self.project_root, question.tutor, update.new_stage, update.is_punish,
+                sd_prompt = compile_sd_prompt(self.project_root, question.tutor, visual_stage, update.is_punish,
                                               question)
-                filename = f"img_{uuid.uuid4().hex[:6]}.png"
+                filename = f"quiz_{uuid.uuid4().hex[:6]}.png"
                 out = os.path.join(self.project_root, "output_images", filename)
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 self.sd_client.generate_image(sd_prompt.prompt, sd_prompt.negative_prompt, out)
                 self.last_image_path = out
-            except Exception as e:
-                print(e)
+            except:
+                pass
 
         return update
 
+    # --- FASE 3: PAGELLA ---
+    def generate_final_report(self, state: SessionState) -> str:
+        score = state.quiz_score
+        tutor = state.current_tutor
+        topic = state.current_topic
+
+        # SALVA LA LEZIONE NEL REGISTRO
+        # Sovrascrive se esiste già (per permettere di migliorare il voto)
+        # Rimuove vecchia entry se esiste
+        state.completed_lessons = [l for l in state.completed_lessons if l.topic != topic]
+        state.completed_lessons.append(LessonRecord(topic=topic, tutor=tutor, score=score))
+
+        level_up_msg = ""
+        if score >= 8:
+            current_base = state.stage.get(tutor, 1)
+            if current_base < 5:
+                state.stage[tutor] = current_base + 1
+                level_up_msg = f"\n\n🌟 LEVEL UP! {tutor} è passata allo Stage {state.stage[tutor]}!"
+            else:
+                level_up_msg = f"\n\n👑 MAX LEVEL! Hai la fiducia totale di {tutor}."
+
+        prompt = f"""
+You are {tutor}. The user finished the quiz on "{topic}". Score: {score}/10.
+Write a final evaluation (Pagella).
+- < 6: Severe, scold them.
+- 6-8: Neutral/Encouraging.
+- 9-10: Enthusiastic/Seductive.
+Language: Italian.
+"""
+        report_text = self.gemini.generate_content(prompt)
+        return report_text + level_up_msg
+
+    # --- UTILS ---
+    def get_answer_feedback(self, question: Question, outcome: str, stage: int) -> str:
+        path = os.path.join(self.project_root, "prompts", "tutor_profiles", f"{question.tutor.lower()}.txt")
+        try:
+            profile = open(path, "r", encoding="utf-8").read()
+        except:
+            profile = f"You are {question.tutor}."
+        mood = self._get_stage_mood(stage)
+        res = "CORRECT" if outcome == "corretta" else "WRONG"
+        return self.gemini.generate_content(f"{profile}\n{mood}\nUser answered {res}. Give a short emotional reaction.")
+
+    def get_tutor_response(self, question, text, has_answered, stage):
+        mood = self._get_stage_mood(stage)
+        return self.gemini.generate_content(f"You are {question.tutor}. {mood}. User says: '{text}'. Reply in Italian.")
+
+    # --- SAVE / LOAD AGGIORNATI ---
     def save_session_to_file(self, state, filepath):
         try:
-            data = {"progress": state.progress, "stage": state.stage,
-                    "history": [{"tutor": h.tutor, "outcome": h.outcome} for h in state.history]}
+            data = {
+                "progress": state.progress,
+                "stage": state.stage,
+                "history": [{"tutor": h.tutor, "outcome": h.outcome} for h in state.history],
+                "completed_lessons": [{"topic": l.topic, "tutor": l.tutor, "score": l.score} for l in
+                                      state.completed_lessons]
+            }
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
-            return True
         except:
-            return False
+            pass
 
     def load_session_from_file(self, filepath):
         try:
@@ -170,6 +263,8 @@ Do not give technical explanations here, just the emotional/personal reaction.
             s.progress = data.get("progress", {})
             s.stage = data.get("stage", {})
             s.history = [HistoryItem(tutor=x["tutor"], outcome=x["outcome"]) for x in data.get("history", [])]
+            s.completed_lessons = [LessonRecord(topic=x["topic"], tutor=x["tutor"], score=x["score"]) for x in
+                                   data.get("completed_lessons", [])]
             return s
         except:
             return None
