@@ -57,7 +57,13 @@ class SessionEngine:
             )
             return msg, ""
 
-        tutor = tutor_for_subject(subject)
+        # FIX: Se il subject è composto (es. "Diritto: Accesso atti"), estraiamo la macro-categoria per trovare il tutor corretto
+        if ":" in subject:
+            macro_subject = subject.split(":")[0].strip()
+        else:
+            macro_subject = subject
+
+        tutor = tutor_for_subject(macro_subject)
         base_stage = state.stage.get(tutor, 1)
 
         # Reset
@@ -88,6 +94,7 @@ Lingua: Italiano.
         image_path = ""
         if self.enable_sd:
             try:
+                # Per l'immagine usiamo un prompt generico legato all'insegnamento
                 dummy_q = Question(
                     domanda=f"Teaching {subject}", opzioni={}, corretta="", spiegazione="",
                     tutor=tutor, materia=subject,
@@ -121,6 +128,7 @@ Lingua: Italiano.
         max_retries = 3
 
         for attempt in range(max_retries):
+            # Passiamo l'argomento specifico (es. "Logica: Sillogismi") nel prompt
             prompt_topic = f"{subject}. {avoid_instruction}"
             prompt_text = build_question_prompt(
                 self.project_root, subject, tutor, base_stage, "neutro", cfg,
@@ -214,8 +222,7 @@ Lingua: Italiano.
         topic = state.current_topic
 
         # SALVA LA LEZIONE NEL REGISTRO
-        # FIX: Rimosso il filtro che cancellava le vecchie lezioni, così manteniamo lo storico completo.
-        # state.completed_lessons = [l for l in state.completed_lessons if l.topic != topic]
+        # Manteniamo lo storico completo senza cancellare le vecchie lezioni
         state.completed_lessons.append(LessonRecord(topic=topic, tutor=tutor, score=score))
 
         level_up_msg = ""
