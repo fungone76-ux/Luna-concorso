@@ -29,7 +29,7 @@ class SDClient:
             "cfg_scale": 7,
             "width": 512,  # Verticale per ritratti, puoi mettere 512x768 se vuoi
             "height": 768,
-            "sampler_name": "Euler a",
+            "sampler_name": "DPM++ 2M Karras",
             "batch_size": 1,
         }
 

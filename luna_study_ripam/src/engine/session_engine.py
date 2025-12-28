@@ -39,9 +39,23 @@ class SessionEngine:
 
     # --- FASE 1: LEZIONE ---
     def start_new_lesson_block(self, state: SessionState) -> Tuple[str, str]:
-        # ANTI-RIPETIZIONE: Escludi argomenti già fatti
-        done_topics = [l.topic for l in state.completed_lessons]
-        subject = self.subject_picker.pick(recent_subjects=done_topics)
+        # 1. Identifica le materie già superate con voto >= 8
+        passed_topics = [l.topic for l in state.completed_lessons if l.score >= 8]
+
+        # 2. Prendi lo storico completo per evitare ripetizioni immediate
+        all_history = [l.topic for l in state.completed_lessons]
+
+        # 3. Estrai la materia escludendo quelle passate
+        subject = self.subject_picker.pick(recent_subjects=all_history, excluded_subjects=passed_topics)
+
+        # 4. Gestione "Gioco Finito" (se subject è None)
+        if subject is None:
+            msg = (
+                "COMPLIMENTI! 🏆\n"
+                "Hai completato tutte le materie del programma con voto superiore all'8.\n"
+                "Sei pronto per il concorso!"
+            )
+            return msg, ""
 
         tutor = tutor_for_subject(subject)
         base_stage = state.stage.get(tutor, 1)
@@ -200,9 +214,8 @@ Lingua: Italiano.
         topic = state.current_topic
 
         # SALVA LA LEZIONE NEL REGISTRO
-        # Sovrascrive se esiste già (per permettere di migliorare il voto)
-        # Rimuove vecchia entry se esiste
-        state.completed_lessons = [l for l in state.completed_lessons if l.topic != topic]
+        # FIX: Rimosso il filtro che cancellava le vecchie lezioni, così manteniamo lo storico completo.
+        # state.completed_lessons = [l for l in state.completed_lessons if l.topic != topic]
         state.completed_lessons.append(LessonRecord(topic=topic, tutor=tutor, score=score))
 
         level_up_msg = ""

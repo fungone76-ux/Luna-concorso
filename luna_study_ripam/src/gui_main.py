@@ -72,6 +72,8 @@ class ImagePopup(ctk.CTkToplevel):
 
 
 class LunaGuiApp(ctk.CTk):
+    # Inserisci questo codice dentro la classe LunaGuiApp in src/gui_main.py
+
     def __init__(self):
         super().__init__()
         init_narrator()
@@ -95,8 +97,85 @@ class LunaGuiApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=0)
         self.grid_rowconfigure(1, weight=1)
 
+        # 1. Costruisci l'interfaccia di gioco (che rimarrà "sotto" o nascosta)
         self._setup_ui()
-        self.after(100, self.start_new_block)
+
+        # 2. Invece di avviare subito, mostra la SCHERMATA INIZIALE
+        # self.after(100, self.start_new_block)  <-- RIMOSSO
+        self.show_start_screen()  # <-- AGGIUNTO
+
+    def show_start_screen(self):
+        """Crea un frame a tutto schermo per il menu principale."""
+        self.start_frame = ctk.CTkFrame(self, fg_color="#111827", corner_radius=0)
+        self.start_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        # Contenitore centrale per allineamento
+        center_frame = ctk.CTkFrame(self.start_frame, fg_color="transparent")
+        center_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+        # LOGO / TITOLO
+        title_label = ctk.CTkLabel(
+            center_frame,
+            text="LUNA STUDY\nRIPAM EDITION",
+            font=("Roboto Medium", 40, "bold"),
+            text_color="#10b981",
+            justify="center"
+        )
+        title_label.pack(pady=(0, 40))
+
+        # PULSANTE NUOVA PARTITA
+        btn_new = ctk.CTkButton(
+            center_frame,
+            text="✨ NUOVA PARTITA",
+            font=("Roboto Medium", 20),
+            fg_color="#059669",
+            hover_color="#047857",
+            width=280,
+            height=60,
+            corner_radius=30,
+            command=self.on_new_game
+        )
+        btn_new.pack(pady=15)
+
+        # PULSANTE CARICA PARTITA
+        btn_load = ctk.CTkButton(
+            center_frame,
+            text="📂 CARICA PARTITA",
+            font=("Roboto Medium", 20),
+            fg_color="#374151",
+            hover_color="#4b5563",
+            width=280,
+            height=60,
+            corner_radius=30,
+            command=self.on_load_game_start
+        )
+        btn_load.pack(pady=15)
+
+        # FOOTER
+        footer = ctk.CTkLabel(
+            self.start_frame,
+            text="Powered by Gemini & Stable Diffusion",
+            font=("Arial", 12),
+            text_color="#6b7280"
+        )
+        footer.place(relx=0.5, rely=0.95, anchor="center")
+
+    def on_new_game(self):
+        """Avvia una nuova sessione."""
+        # Distrugge la schermata iniziale con un'animazione o semplicemente la rimuove
+        self.start_frame.destroy()
+        # Avvia la logica di gioco esistente
+        self.start_new_block()
+
+    def on_load_game_start(self):
+        """Gestisce il caricamento dalla schermata iniziale."""
+        file_path = filedialog.askopenfilename(filetypes=[("Salvataggio Luna", "*.json")])
+        if file_path:
+            ns = self.engine.load_session_from_file(file_path)
+            if ns:
+                self.session_state = ns
+                self.start_frame.destroy()  # Rimuove il menu solo se il caricamento va a buon fine
+                self.show_summary_screen()
 
     def _init_engine(self):
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
