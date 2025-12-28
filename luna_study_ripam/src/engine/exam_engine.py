@@ -31,72 +31,80 @@ class ExamEngine:
 
     def start_exam(self) -> ExamSession:
         roadmap = []
-        # 1. Materie Tecniche / Giuridiche (circa 25 domande)
-        pool_know = [
+
+        # --- BLOCCO 1: 10 QUESITI COMUNI (Art. 6 Bando) ---
+        # Include: Amministrativo, Penale, CAD, UE, Contabilità, Inglese, Informatica
+        pool_common = [
             "Diritto amministrativo",
             "Diritto penale (PA)",
             "Codice dell'Amministrazione Digitale (CAD)",
             "Diritto dell'Unione Europea",
             "Contabilità di Stato",
+            "Inglese A2",  # Spostato qui da Logica (come da bando)
+            "Informatica (TIC)",  # Spostato qui da Logica (come da bando)
+            "Lavoro pubblico",  # Sottoinsieme di Amministrativo
+            "Responsabilità del dipendente pubblico",  # Sottoinsieme di Amministrativo
+            "Contratti pubblici"  # Sottoinsieme di Amministrativo
+        ]
+        # Ne estraiamo 10 garantendo varietà
+        for _ in range(10):
+            roadmap.append(random.choice(pool_common))
+
+        # --- BLOCCO 2: 15 QUESITI SPECIFICI (Profilo 01 - Accoglienza/Vigilanza) ---
+        # Nota: Se stai preparando il Profilo 02, dobbiamo cambiare questa lista.
+        pool_specific_01 = [
             "Sicurezza (D.Lgs. 81/2008)",
             "Marketing e comunicazione PA",
-            "Beni culturali",
-            "Struttura MIC",
-            "Lavoro pubblico",
-            "Contratti pubblici",
-            "Responsabilità del dipendente pubblico"
+            "Beni culturali",  # Elementi di diritto del patrimonio e nozioni
+            "Struttura MIC"
         ]
+        # Ne estraiamo 15. Dato che sono poche materie, si ripeteranno (es. 4 domande di sicurezza, 4 di beni culturali...)
+        for _ in range(15):
+            roadmap.append(random.choice(pool_specific_01))
 
-        # Genera roadmap bilanciata
-        for _ in range(25):
-            roadmap.append(random.choice(pool_know))
-
-        # 2. Logica e Inglese (circa 7 domande)
-        pool_logic_eng = ["Logica", "Ragionamento critico-verbale", "Inglese A2", "Informatica (TIC)"]
+        # --- BLOCCO 3: 7 QUESITI LOGICA ---
+        # Solo Logica deduttiva e Ragionamento critico-verbale (NO Inglese/IT qui)
+        pool_logic = ["Logica", "Ragionamento critico-verbale"]
         for _ in range(7):
-            roadmap.append(random.choice(pool_logic_eng))
+            roadmap.append(random.choice(pool_logic))
 
-        # 3. Situazionali (8 domande fisse)
+        # --- BLOCCO 4: 8 QUESITI SITUAZIONALI ---
         for _ in range(8):
             roadmap.append("Quesiti situazionali")
 
-        # Mischia la roadmap (tranne le situazionali che spesso sono in blocco, ma qui le lasciamo in fondo o mischiamo tutto?)
-        # Di solito nei concorsi sono a blocchi, ma mischiare le prime due sezioni rende l'esame più dinamico.
-        # Lasciamo le situazionali in fondo come da prassi RIPAM recente.
-        part1 = roadmap[:32]
-        random.shuffle(part1)
-        final_roadmap = part1 + roadmap[32:]
+        # Mischiamo solo i primi tre blocchi (32 domande) per realismo,
+        # lasciando i situazionali in fondo o mischiando tutto?
+        # Il bando non specifica l'ordine, ma spesso sono raggruppate.
+        # Mischiamo tutto tranne i situazionali per rendere l'esame dinamico ma ordinato.
+        technical_part = roadmap[:32]
+        random.shuffle(technical_part)
+
+        final_roadmap = technical_part + roadmap[32:]  # Situazionali in coda (domande 33-40)
 
         return ExamSession(start_time=time.time(), subject_roadmap=final_roadmap)
 
     def get_next_question(self, session: ExamSession) -> Optional[Question]:
-        # Se abbiamo finito le domande previste
         if session.current_index >= len(session.subject_roadmap):
             return None
 
-        # Se la domanda è già stata generata in precedenza (navigazione indietro), la restituiamo
         if session.current_index < len(session.questions):
             return session.questions[session.current_index]
 
         # --- GENERAZIONE NUOVA DOMANDA ---
         subject = session.subject_roadmap[session.current_index]
 
-        # 1. Scelta del Topic Specifico (Sotto-materia)
-        # Se la materia ha sotto-argomenti definiti in subject_picker, ne usiamo uno a caso.
+        # 1. Scelta del Topic Specifico
         if subject in SUB_TOPICS:
             specific_topic = f"{subject}: {random.choice(SUB_TOPICS[subject])}"
         else:
-            # Fallback al vecchio sistema se non c'è nel dizionario nuovo
             specific_topic = get_random_topic(subject)
 
         # 2. Scelta del Tutor Corretto
-        # Usiamo il router per avere il tutor specialista (es. Stella per Inglese/Logica, Maria per Diritto)
         tutor = tutor_for_subject(subject)
 
+        # Difficulty 3 (Media) per esame standard
         cfg = PromptBuildConfig(seed_per_prompt=3, strict_json_only=True)
 
-        # Costruiamo il prompt usando il tutor corretto e il topic specifico
-        # Difficulty settata a 3 (media) per simulazione esame realistica
         prompt = build_question_prompt(
             self.project_root, subject, tutor, 3, "neutro", cfg,
             specific_topic=specific_topic
@@ -108,7 +116,6 @@ class ExamEngine:
         try:
             data = json.loads(clean)
         except:
-            # Fallback in caso di errore JSON
             data = {
                 "domanda": "Errore di connessione al database domande.",
                 "opzioni": {"A": ".", "B": ".", "C": ".", "D": "."},
@@ -117,8 +124,6 @@ class ExamEngine:
             }
 
         spieg = data.get("spiegazione_breve") or data.get("spiegazione", "")
-
-        # Pulizia della lettera corretta (a volte arriva come "A)" o "A.")
         corr_raw = str(data.get("corretta", "A")).strip().upper()[0]
 
         q = Question(
@@ -126,7 +131,7 @@ class ExamEngine:
             opzioni=data.get("opzioni", {}),
             corretta=corr_raw,
             spiegazione=spieg,
-            tutor=tutor,  # Tutor corretto!
+            tutor=tutor,
             materia=subject,
             tipo="situazionale" if subject == "Quesiti situazionali" else "standard",
             spiegazione_breve=spieg
@@ -146,18 +151,11 @@ class ExamEngine:
             ans = session.answers.get(i)
 
             if q.tipo == "situazionale":
-                # Logica Situazionale: Risposta più efficace vs meno efficace
-                # Nota: Qui semplifichiamo. Se l'LLM ci dà solo UNA corretta ("corretta": "A"),
-                # assumiamo che quella sia la +0.75.
-                # Per una logica situazionale pura servirebbe una mappa di efficacia per ogni opzione.
-                # Per ora manteniamo la logica base: se azzecchi la "best" prendi il max.
                 if ans == q.corretta:
                     total += 0.75
                 elif ans:
-                    # Se rispondi ma non è la "best", diamo un punteggio neutro (assunzione semplificata)
                     total += 0.375
             else:
-                # Logica Standard
                 if ans == q.corretta:
                     total += 0.75
                     corr += 1
@@ -165,7 +163,7 @@ class ExamEngine:
                     total -= 0.25
                     wrong += 1
                 else:
-                    omit += 1  # 0 punti
+                    omit += 0  # 0 punti per omessa
 
         final = max(0.0, total)
         passed = final >= 21.0

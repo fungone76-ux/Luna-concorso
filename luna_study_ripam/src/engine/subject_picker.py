@@ -45,8 +45,9 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "Contabilità di Stato": 2.0,
 }
 
-# NUOVO: Sotto-argomenti per lezioni specifiche
+# NUOVO: Sotto-argomenti COMPLETI per TUTTE le materie
 SUB_TOPICS: Dict[str, List[str]] = {
+    # --- AREA GIURIDICA ---
     "Diritto amministrativo": [
         "Legge 241/90: Principi generali e trasparenza",
         "Il Responsabile del Procedimento (RUP)",
@@ -56,6 +57,84 @@ SUB_TOPICS: Dict[str, List[str]] = {
         "Autotutela: Revoca e Annullamento d'ufficio",
         "Vizi dell'atto amministrativo (Nullità e Annullabilità)"
     ],
+    "Diritto penale (PA)": [
+        "I reati contro la Pubblica Amministrazione in generale",
+        "Peculato e Peculato d'uso",
+        "Concussione e Induzione indebita",
+        "Corruzione (propria, impropria e in atti giudiziari)",
+        "Abuso d'ufficio e Rifiuto di atti d'ufficio",
+        "La qualifica di Pubblico Ufficiale e Incaricato di Pubblico Servizio"
+    ],
+    "Responsabilità del dipendente pubblico": [
+        "Responsabilità civile, penale, amministrativa e contabile",
+        "La responsabilità disciplinare e il codice di comportamento",
+        "Il danno erariale e il ruolo della Corte dei Conti"
+    ],
+    "Lavoro pubblico": [
+        "Diritti e doveri del dipendente pubblico",
+        "Il Codice di Comportamento (DPR 62/2013)",
+        "Il procedimento disciplinare: fasi e sanzioni",
+        "Accesso al pubblico impiego e incompatibilità"
+    ],
+    "Contratti pubblici": [
+        "Il Codice Appalti (D.Lgs 36/2023): Principi guida",
+        "Le soglie per l'affidamento diretto",
+        "Criteri di aggiudicazione: Prezzo vs Qualità",
+        "Il RUP nel nuovo Codice Appalti",
+        "Il Fascicolo Virtuale dell'Operatore Economico"
+    ],
+
+    # --- AREA CULTURA & MINISTERO ---
+    "Beni culturali": [
+        "Definizione di Bene Culturale (Codice Urbani)",
+        "Tutela vs Valorizzazione: differenze concettuali",
+        "Verifica dell'interesse culturale e Vincolo",
+        "Soprintendenze e Musei autonomi: competenze",
+        "Art Bonus e Mecenatismo culturale"
+    ],
+    "Struttura MIC": [
+        "Organizzazione centrale: Segretariato e Direzioni Generali",
+        "Organizzazione periferica: Segretariati Regionali",
+        "Le Soprintendenze Archeologia, Belle Arti e Paesaggio",
+        "I Musei dotati di autonomia speciale",
+        "ALES S.p.A. e gli organismi collegati"
+    ],
+    "Marketing e comunicazione PA": [
+        "Legge 150/2000: URP, Ufficio Stampa e Portavoce",
+        "Comunicazione istituzionale vs Comunicazione politica",
+        "Strumenti di promozione dei servizi culturali",
+        "Social Media Policy nella PA"
+    ],
+
+    # --- AREA TECNICA & TRASVERSALE ---
+    "Codice dell'Amministrazione Digitale (CAD)": [
+        "Il Documento Informatico e le copie",
+        "Le Firme Elettroniche (Semplice, Avanzata, Qualificata, Digitale)",
+        "La PEC e il Domicilio Digitale",
+        "Identità Digitale: SPID, CIE e CNS",
+        "Il Responsabile per la Transizione al Digitale (RTD)"
+    ],
+    "Contabilità di Stato": [
+        "Il Bilancio dello Stato: principi e struttura",
+        "Le fasi dell'entrata e della spesa",
+        "Il Rendiconto generale dello Stato",
+        "Competenza e Cassa: differenze"
+    ],
+    "Diritto dell'Unione Europea": [
+        "Le Istituzioni UE: Parlamento, Consiglio, Commissione",
+        "Le Fonti del diritto UE: Regolamenti vs Direttive",
+        "La Corte di Giustizia dell'Unione Europea",
+        "Principi di sussidiarietà e proporzionalità"
+    ],
+    "Sicurezza (D.Lgs. 81/2008)": [
+        "Obblighi del Datore di Lavoro e Delega di funzioni",
+        "Figure chiave: RSPP, RLS e Medico Competente",
+        "Documento di Valutazione dei Rischi (DVR)",
+        "DPI (Dispositivi Protezione Individuale)",
+        "Gestione delle emergenze e Primo Soccorso"
+    ],
+
+    # --- COMPETENZE BASE & LOGICA ---
     "Logica": [
         "Sillogismi e deduzioni logiche",
         "Serie numeriche e alfabetiche",
@@ -69,44 +148,23 @@ SUB_TOPICS: Dict[str, List[str]] = {
         "Reti di calcolatori, Internet e Cloud",
         "Sicurezza informatica, Malware e Phishing",
         "Il pacchetto Office: Word, Excel, PowerPoint",
-        "Posta Elettronica Certificata (PEC) e Firme Digitali"
+        "Backup, Privacy e Protezione dati"
     ],
     "Inglese A2": [
         "Verb Tenses: Present Simple & Continuous",
         "Verb Tenses: Past Simple (Regular & Irregular)",
         "Question Words (Who, What, Where, When, How)",
-        "Prepositions of Place and Time (in, on, at, under)",
+        "Prepositions of Place and Time",
         "Modal Verbs (Can, Must, Should, Have to)",
-        "Quantifiers (Much, Many, Some, Any, A lot of)",
         "Professional Vocabulary: Office & Meeting",
-        "Museum & Tourism Vocabulary",
-        "Reading Comprehension: Short Emails"
+        "Museum & Tourism Vocabulary"
     ],
-    "Beni culturali": [
-        "Definizione di Bene Culturale (Codice Urbani)",
-        "Tutela vs Valorizzazione: differenze",
-        "Verifica dell'interesse culturale e Vincolo",
-        "Soprintendenze e Musei autonomi",
-        "Art Bonus e Mecenatismo culturale"
-    ],
-    "Sicurezza (D.Lgs. 81/2008)": [
-        "Obblighi del Datore di Lavoro e Delega",
-        "Figure chiave: RSPP, RLS e Medico Competente",
-        "Documento di Valutazione dei Rischi (DVR)",
-        "DPI (Dispositivi Protezione Individuale)",
-        "Gestione delle emergenze e Primo Soccorso"
-    ],
-    "Contratti pubblici": [
-        "Il Codice Appalti (D.Lgs 36/2023): Principi guida",
-        "Le soglie per l'affidamento diretto",
-        "Criteri di aggiudicazione: Prezzo vs Qualità",
-        "Il Fascicolo Virtuale dell'Operatore Economico"
-    ],
-    "Lavoro pubblico": [
-        "Diritti e doveri del dipendente pubblico",
-        "Il Codice di Comportamento (DPR 62/2013)",
-        "Il procedimento disciplinare",
-        "Accesso al pubblico impiego (Concorsi)"
+    "Quesiti situazionali": [
+        "Gestione del conflitto con un collega",
+        "Gestione di un utente/visitatore arrabbiato",
+        "Priorità tra urgenza e procedura",
+        "Rispetto della gerarchia e autonomia",
+        "Lavoro in team e collaborazione"
     ]
 }
 
