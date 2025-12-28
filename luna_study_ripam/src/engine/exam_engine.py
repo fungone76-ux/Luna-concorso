@@ -58,7 +58,7 @@ class ExamEngine:
             "Beni culturali",  # Elementi di diritto del patrimonio e nozioni
             "Struttura MIC"
         ]
-        # Ne estraiamo 15. Dato che sono poche materie, si ripeteranno (es. 4 domande di sicurezza, 4 di beni culturali...)
+        # Ne estraiamo 15.
         for _ in range(15):
             roadmap.append(random.choice(pool_specific_01))
 
@@ -74,8 +74,6 @@ class ExamEngine:
 
         # Mischiamo solo i primi tre blocchi (32 domande) per realismo,
         # lasciando i situazionali in fondo o mischiando tutto?
-        # Il bando non specifica l'ordine, ma spesso sono raggruppate.
-        # Mischiamo tutto tranne i situazionali per rendere l'esame dinamico ma ordinato.
         technical_part = roadmap[:32]
         random.shuffle(technical_part)
 
@@ -123,13 +121,40 @@ class ExamEngine:
                 "materia": subject
             }
 
+        # --- SHUFFLING LOGIC (RANDOMIZZA RISPOSTE) ---
+        # 1. Recupera opzioni e risposta corretta originale
+        opts_dict = data.get("opzioni", {})
+        valid_opts_values = [v for k, v in opts_dict.items() if v and str(v).strip() != "."]
+
+        # Gestione errori se mancano opzioni
+        if len(valid_opts_values) < 2:
+            valid_opts_values = ["Errore A", "Errore B", "Errore C", "Errore D"]
+
+        raw_letter = str(data.get("corretta", "A")).strip().upper()
+        if len(raw_letter) > 1: raw_letter = raw_letter[0]
+        correct_text = opts_dict.get(raw_letter, "")
+
+        # 2. Mescola i testi
+        random.shuffle(valid_opts_values)
+
+        # 3. Ricostruisci il dizionario A, B, C, D
+        keys = ["A", "B", "C", "D"][:len(valid_opts_values)]
+        shuffled_opzioni = dict(zip(keys, valid_opts_values))
+
+        # 4. Ritrova la nuova lettera corretta (dove è finito il testo giusto?)
+        new_corretta = "A"
+        for k, v in shuffled_opzioni.items():
+            if v == correct_text:
+                new_corretta = k
+                break
+        # ---------------------------------------------
+
         spieg = data.get("spiegazione_breve") or data.get("spiegazione", "")
-        corr_raw = str(data.get("corretta", "A")).strip().upper()[0]
 
         q = Question(
             domanda=data.get("domanda", ""),
-            opzioni=data.get("opzioni", {}),
-            corretta=corr_raw,
+            opzioni=shuffled_opzioni,  # Usa opzioni mescolate
+            corretta=new_corretta,  # Usa la nuova lettera corretta
             spiegazione=spieg,
             tutor=tutor,
             materia=subject,

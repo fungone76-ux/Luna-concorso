@@ -142,17 +142,37 @@ Lingua: Italiano.
                 data = json.loads(clean_json)
                 if not data.get("domanda") or not data.get("opzioni"): raise ValueError("Dati vuoti")
 
-                valid_opts = [v for k, v in data["opzioni"].items() if v and str(v).strip() != "."]
-                if len(valid_opts) < 2: raise ValueError("Opzioni mancanti")
+                # Recupera le opzioni valide
+                valid_opts_values = [v for k, v in data["opzioni"].items() if v and str(v).strip() != "."]
+                if len(valid_opts_values) < 2: raise ValueError("Opzioni mancanti")
+
+                # --- LOGICA SHUFFLE (Mescola le risposte) ---
+                # 1. Recupera il testo della risposta corretta originale
+                raw_letter = str(data.get("corretta", "A")).strip().upper()
+                if len(raw_letter) > 1: raw_letter = raw_letter[0]
+                correct_text = data["opzioni"].get(raw_letter, "")
+
+                # 2. Mescola la lista delle risposte (testi)
+                random.shuffle(valid_opts_values)
+
+                # 3. Ricostruisci il dizionario con chiavi A, B, C, D
+                keys = ["A", "B", "C", "D"][:len(valid_opts_values)]
+                shuffled_opzioni = dict(zip(keys, valid_opts_values))
+
+                # 4. Ritrova la nuova lettera corretta
+                new_corretta = "A" # Fallback
+                for k, v in shuffled_opzioni.items():
+                    if v == correct_text:
+                        new_corretta = k
+                        break
+                # --------------------------------------------
 
                 spieg = data.get("spiegazione_breve") or data.get("spiegazione", "...")
-                corr_raw = str(data.get("corretta", "A")).strip().upper()
-                if len(corr_raw) > 1: corr_raw = corr_raw[0]
 
                 return Question(
                     domanda=data.get("domanda", ""),
-                    opzioni=data.get("opzioni", {}),
-                    corretta=corr_raw,
+                    opzioni=shuffled_opzioni,  # Usa opzioni mescolate
+                    corretta=new_corretta,     # Usa la nuova lettera corretta
                     spiegazione=spieg,
                     tutor=tutor,
                     materia=subject,
